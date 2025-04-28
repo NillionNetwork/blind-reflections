@@ -7836,22 +7836,19 @@ if (cid) {
       const uuid = authData?.uuid;
       if (!uuid) {
         const authModal = new bootstrap.Modal(document.getElementById("authModal"));
-        const authWarning = document.getElementById("auth-warning");
-        authWarning.classList.remove("d-none");
+        showWarningModal("You must be logged in to save a memory.");
         authModal.show();
         return;
-      } else {
-        console.log("UUID found:", uuid);
       }
       const entryTextArea = document.getElementById("entry-text");
       const entryText = entryTextArea.value.trim();
       if (!entryText) {
-        alert("Please enter some text for your reflection.");
+        showWarningModal("Please enter some text for your reflection.");
         return;
       }
       const MAX_CHARS = 25e3;
       if (entryText.length > MAX_CHARS) {
-        alert(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
+        showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
         return;
       }
       const message_for_nildb = {
@@ -7935,7 +7932,6 @@ if (cid) {
         const data = loadData();
         data[dateStr] = entries;
         saveData(data);
-        console.log("Updated local storage with fetched entries:", data[dateStr]);
         displayEntries(data[dateStr]);
       } catch (error) {
         console.error("Failed to read data from nilDB:", error);
@@ -7978,7 +7974,6 @@ if (cid) {
                 </div>
             `;
         entryCard.addEventListener("click", () => {
-          console.log("Entry clicked:", entry);
           const memoryText = entry.text;
           const memoryDate = currentSelectedDate;
           const memoryItem = document.createElement("li");
@@ -8069,7 +8064,7 @@ if (cid) {
         body: raw,
         redirect: "follow"
       };
-      showLoadingAnimation("Saving your memory...");
+      showLoadingAnimation("Waiting for SecretLLM...");
       try {
         const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
         if (!response.ok) {
