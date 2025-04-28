@@ -684,27 +684,75 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    document.getElementById('ask-secret-llm-btn').addEventListener('click', () => {
+    document.getElementById('ask-secret-llm-btn').addEventListener('click', async () => {
         const privateReflectionInput = document.getElementById('private-reflection-input');
         const memoryDisplayBox = document.getElementById('memory-display-box');
 
-        // Prepare the alert message
-        let alertMessage = 'Your Input:\n';
-        alertMessage += privateReflectionInput.value.trim() ? `${privateReflectionInput.value.trim()}\n\n` : 'No input provided.\n\n';
+        // Prepare the messages for the API call
+        const messages = [];
 
-        alertMessage += 'Selected Memories:\n';
+        // Add the user's private reflection input as a message
+        if (privateReflectionInput.value.trim()) {
+            messages.push({
+                role: 'user',
+                content: privateReflectionInput.value.trim(),
+            });
+        }
+
+        // Add selected memories as messages
         if (memoryQueue.length > 0) {
             memoryQueue.forEach((item) => {
                 const date = item.querySelector('.memory-date').textContent;
                 const text = item.querySelector('.memory-text').textContent;
-                alertMessage += `${date}: ${text}\n`;
+                messages.push({
+                    role: 'user',
+                    content: `Memory from ${date}: ${text}`,
+                });
             });
         } else {
-            alertMessage += 'No memories selected.\n';
+            console.warn('No memories selected.');
         }
 
-        // Show the alert
-        alert(alertMessage);
+        // Prepare the API request
+        const myHeaders = new Headers();
+        myHeaders.append("Content-Type", "application/json");
+        myHeaders.append("Accept", "application/json");
+        myHeaders.append("Authorization", "Bearer Nillion2025");
+
+        const raw = JSON.stringify({
+            model: "meta-llama/Llama-3.1-8B-Instruct",
+            messages: messages,
+            temperature: 0.2,
+            top_p: 0.95,
+            max_tokens: 2048,
+            stream: false,
+            nilrag: {}
+        });
+
+        const requestOptions = {
+            method: "POST",
+            headers: myHeaders,
+            body: raw,
+            redirect: "follow"
+        };
+
+        // Make the API call
+        try {
+            const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch response from the API');
+            }
+
+            const result = await response.json();
+            console.log('API Response:', result);
+
+            // Show the response in a modal
+            showLLMResponseModal(result.choices[0].message.content);
+        } catch (error) {
+            console.error('Error calling the API:', error);
+            alert('Failed to process your request. Please try again later.');
+        }
 
         // Clear the memory queue
         memoryQueue.length = 0;
@@ -717,6 +765,56 @@ document.addEventListener('DOMContentLoaded', function() {
         renderMemoryDisplayBox();
     });
 
+    // Function to display the LLM response in a modal
+    function showLLMResponseModal(responseContent) {
+        // Create the modal HTML
+        const modalHTML = `
+            <div class="modal fade" id="llmResponseModal" tabindex="-1" aria-labelledby="llmResponseModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
+                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+                            <h5 class="modal-title" id="llmResponseModalLabel" style="color: var(--teal-color);">Blind Reflections</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p style="white-space: pre-wrap; font-family: var(--font-family);">${responseContent}</p>
+                        </div>
+                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
+                            <button id="copy-response-btn" class="btn btn-outline-accent">Copy Response</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Append the modal to the body
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Show the modal
+        const modalElement = new bootstrap.Modal(document.getElementById('llmResponseModal'));
+        modalElement.show();
+
+        // Add copy functionality
+        document.getElementById('copy-response-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(responseContent)
+                .then(() => {
+                    const copyButton = document.getElementById('copy-response-btn');
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyButton.textContent = 'Copy Response';
+                    }, 1500);
+                })
+                .catch((err) => {
+                    console.error('Failed to copy text:', err);
+                });
+        });
+
+        // Remove the modal from the DOM when hidden
+        document.getElementById('llmResponseModal').addEventListener('hidden.bs.modal', () => {
+            document.getElementById('llmResponseModal').remove();
+        });
+    }
 
     // Function to mark dates with entries in the calendar
     function markDateWithEntries(dateStr) {

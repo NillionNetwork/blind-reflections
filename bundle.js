@@ -8010,30 +8010,102 @@ if (cid) {
         memoryDisplayBox.appendChild(memoryCard);
       });
     }
-    document.getElementById("ask-secret-llm-btn").addEventListener("click", () => {
+    document.getElementById("ask-secret-llm-btn").addEventListener("click", async () => {
       const privateReflectionInput = document.getElementById("private-reflection-input");
       const memoryDisplayBox = document.getElementById("memory-display-box");
-      let alertMessage = "Your Input:\n";
-      alertMessage += privateReflectionInput.value.trim() ? `${privateReflectionInput.value.trim()}
-
-` : "No input provided.\n\n";
-      alertMessage += "Selected Memories:\n";
+      const messages = [];
+      if (privateReflectionInput.value.trim()) {
+        messages.push({
+          role: "user",
+          content: privateReflectionInput.value.trim()
+        });
+      }
       if (memoryQueue.length > 0) {
         memoryQueue.forEach((item) => {
           const date = item.querySelector(".memory-date").textContent;
           const text = item.querySelector(".memory-text").textContent;
-          alertMessage += `${date}: ${text}
-`;
+          messages.push({
+            role: "user",
+            content: `Memory from ${date}: ${text}`
+          });
         });
       } else {
-        alertMessage += "No memories selected.\n";
+        console.warn("No memories selected.");
       }
-      alert(alertMessage);
+      const myHeaders = new Headers();
+      myHeaders.append("Content-Type", "application/json");
+      myHeaders.append("Accept", "application/json");
+      myHeaders.append("Authorization", "Bearer Nillion2025");
+      const raw = JSON.stringify({
+        model: "meta-llama/Llama-3.1-8B-Instruct",
+        messages,
+        temperature: 0.2,
+        top_p: 0.95,
+        max_tokens: 2048,
+        stream: false,
+        nilrag: {}
+      });
+      const requestOptions = {
+        method: "POST",
+        headers: myHeaders,
+        body: raw,
+        redirect: "follow"
+      };
+      try {
+        const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
+        if (!response.ok) {
+          throw new Error("Failed to fetch response from the API");
+        }
+        const result = await response.json();
+        console.log("API Response:", result);
+        showLLMResponseModal(result.choices[0].message.content);
+      } catch (error) {
+        console.error("Error calling the API:", error);
+        alert("Failed to process your request. Please try again later.");
+      }
       memoryQueue.length = 0;
       privateReflectionInput.value = "";
       privateReflectionInput.setAttribute("placeholder", "Let's do some private reflections...");
       renderMemoryDisplayBox();
     });
+    function showLLMResponseModal(responseContent) {
+      const modalHTML = `
+            <div class="modal fade" id="llmResponseModal" tabindex="-1" aria-labelledby="llmResponseModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
+                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+                            <h5 class="modal-title" id="llmResponseModalLabel" style="color: var(--teal-color);">SecretLLM Response</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p style="white-space: pre-wrap; font-family: var(--font-family);">${responseContent}</p>
+                        </div>
+                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
+                            <button id="copy-response-btn" class="btn btn-outline-accent">Copy Response</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+      document.body.insertAdjacentHTML("beforeend", modalHTML);
+      const modalElement = new bootstrap.Modal(document.getElementById("llmResponseModal"));
+      modalElement.show();
+      document.getElementById("copy-response-btn").addEventListener("click", () => {
+        navigator.clipboard.writeText(responseContent).then(() => {
+          const copyButton = document.getElementById("copy-response-btn");
+          copyButton.textContent = "Copied!";
+          setTimeout(() => {
+            copyButton.textContent = "Copy Response";
+          }, 1500);
+        }).catch((err) => {
+          console.error("Failed to copy text:", err);
+        });
+      });
+      document.getElementById("llmResponseModal").addEventListener("hidden.bs.modal", () => {
+        document.getElementById("llmResponseModal").remove();
+      });
+    }
     function markDateWithEntries(dateStr) {
       const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
       if (dateEl) {
