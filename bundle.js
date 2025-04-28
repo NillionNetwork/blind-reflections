@@ -8021,13 +8021,14 @@ if (cid) {
         });
       }
       if (memoryQueue.length > 0) {
-        memoryQueue.forEach((item) => {
+        const memoryContext = memoryQueue.map((item) => {
           const date = item.querySelector(".memory-date").textContent;
           const text = item.querySelector(".memory-text").textContent;
-          messages.push({
-            role: "user",
-            content: `Memory from ${date}: ${text}`
-          });
+          return `Memory from ${date}: ${text}`;
+        }).join("\n");
+        messages.push({
+          role: "system",
+          content: memoryContext
         });
       } else {
         console.warn("No memories selected.");
@@ -8036,6 +8037,7 @@ if (cid) {
       myHeaders.append("Content-Type", "application/json");
       myHeaders.append("Accept", "application/json");
       myHeaders.append("Authorization", "Bearer Nillion2025");
+      console.log("Messages for API:", messages);
       const raw = JSON.stringify({
         model: "meta-llama/Llama-3.1-8B-Instruct",
         messages,
@@ -8074,7 +8076,7 @@ if (cid) {
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
                         <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
-                            <h5 class="modal-title" id="llmResponseModalLabel" style="color: var(--teal-color);">SecretLLM Response</h5>
+                            <h5 class="modal-title" id="llmResponseModalLabel" style="color: var(--teal-color);">Blind Reflections</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
