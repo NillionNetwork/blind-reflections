@@ -8012,6 +8012,16 @@ if (cid) {
     }
     document.getElementById("ask-secret-llm-btn").addEventListener("click", async () => {
       const privateReflectionInput = document.getElementById("private-reflection-input");
+      if (!privateReflectionInput.value.trim() && memoryQueue.length === 0) {
+        showWarningModal("Please provide a prompt and select at least one memory.");
+        return;
+      } else if (!privateReflectionInput.value.trim()) {
+        showWarningModal("Please provide a prompt.");
+        return;
+      } else if (memoryQueue.length === 0) {
+        showWarningModal("Please select at least one memory.");
+        return;
+      }
       const memoryDisplayBox = document.getElementById("memory-display-box");
       const messages = [];
       if (privateReflectionInput.value.trim()) {
@@ -8106,6 +8116,32 @@ if (cid) {
       });
       document.getElementById("llmResponseModal").addEventListener("hidden.bs.modal", () => {
         document.getElementById("llmResponseModal").remove();
+      });
+    }
+    function showWarningModal(message) {
+      const modalHTML = `
+            <div class="modal fade" id="warningModal" tabindex="-1" aria-labelledby="warningModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
+                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+                            <h5 class="modal-title" id="warningModalLabel" style="color: #FF6F61;">Warning</h5> <!-- Pastel red -->
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p style="font-weight: font-family: var(--font-family);">${message}</p> <!-- Text matches theme -->
+                        </div>
+                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+      document.body.insertAdjacentHTML("beforeend", modalHTML);
+      const modalElement = new bootstrap.Modal(document.getElementById("warningModal"));
+      modalElement.show();
+      document.getElementById("warningModal").addEventListener("hidden.bs.modal", () => {
+        document.getElementById("warningModal").remove();
       });
     }
     function markDateWithEntries(dateStr) {

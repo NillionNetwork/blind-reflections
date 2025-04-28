@@ -686,6 +686,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('ask-secret-llm-btn').addEventListener('click', async () => {
         const privateReflectionInput = document.getElementById('private-reflection-input');
+
+        // Check if input or memories are empty
+        if (!privateReflectionInput.value.trim() && memoryQueue.length === 0) {
+            showWarningModal('Please provide a prompt and select at least one memory.');
+            return;
+        } else if (!privateReflectionInput.value.trim()) {
+            showWarningModal('Please provide a prompt.');
+            return;
+        } else if (memoryQueue.length === 0) {
+            showWarningModal('Please select at least one memory.');
+            return;
+        }
+
         const memoryDisplayBox = document.getElementById('memory-display-box');
 
         // Prepare the messages for the API call
@@ -817,6 +830,41 @@ document.addEventListener('DOMContentLoaded', function() {
         // Remove the modal from the DOM when hidden
         document.getElementById('llmResponseModal').addEventListener('hidden.bs.modal', () => {
             document.getElementById('llmResponseModal').remove();
+        });
+    }
+
+    // Function to display a warning modal
+    function showWarningModal(message) {
+        // Create the modal HTML
+        const modalHTML = `
+            <div class="modal fade" id="warningModal" tabindex="-1" aria-labelledby="warningModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
+                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+                            <h5 class="modal-title" id="warningModalLabel" style="color: #FF6F61;">Warning</h5> <!-- Pastel red -->
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p style="font-weight: font-family: var(--font-family);">${message}</p> <!-- Text matches theme -->
+                        </div>
+                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Append the modal to the body
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Show the modal
+        const modalElement = new bootstrap.Modal(document.getElementById('warningModal'));
+        modalElement.show();
+
+        // Remove the modal from the DOM when hidden
+        document.getElementById('warningModal').addEventListener('hidden.bs.modal', () => {
+            document.getElementById('warningModal').remove();
         });
     }
 
