@@ -400,27 +400,51 @@ document.addEventListener('DOMContentLoaded', function() {
         day: 'numeric'
     });
 
-    // Load data from localStorage
+    // Load data from localStorage based on UUID
     function loadData() {
-        const data = localStorage.getItem(STORAGE_KEY);
+        const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+        const uuid = authData?.uuid;
+
+        if (!uuid) {
+            console.error('No UUID found. Cannot load data.');
+            return {};
+        }
+
+        const data = localStorage.getItem(`${STORAGE_KEY}_${uuid}`);
         return data ? JSON.parse(data) : {};
     }
 
-    // Save data to localStorage
+    // Save data to localStorage based on UUID
     function saveData(data) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
+        const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+        const uuid = authData?.uuid;
 
-    // Fetch entries for a date
-    function fetchEntries(dateStr) {
-        const data = loadData();
-        const entries = data[dateStr] || [];
-        displayEntries(entries);
+        if (!uuid) {
+            console.error('No UUID found. Cannot save data.');
+            return;
+        }
+
+        localStorage.setItem(`${STORAGE_KEY}_${uuid}`, JSON.stringify(data));
     }
 
     // Save a new entry
     async function saveEntry() {
         if (!currentSelectedDate) return;
+
+        const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+        const uuid = authData?.uuid;
+
+        if (!uuid) {
+            const authModal = new bootstrap.Modal(document.getElementById('authModal'));
+            const authWarning = document.getElementById('auth-warning');
+
+            // Show the warning message
+            authWarning.classList.remove('d-none');
+            authModal.show();
+            return;
+        } else {
+            console.log('UUID found:', uuid);
+        }
 
         const entryTextArea = document.getElementById('entry-text');
         const entryText = entryTextArea.value.trim();
@@ -438,42 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const data = loadData();
-        const timestamp = new Date().toISOString();
-
-        if (!data[currentSelectedDate]) {
-            data[currentSelectedDate] = [];
-        }
-
-        data[currentSelectedDate].push({ text: entryText, timestamp });
-        saveData(data);
-
-        // Clear the input field
-        entryTextArea.value = '';
-
-        // Refresh entries display
-        displayEntries(data[currentSelectedDate]);
-
-        // Mark this date as having entries in the calendar
-        markDateWithEntries(currentSelectedDate);
-
-        // Scroll to the top of the entries list to see the newest entry
-        const entriesList = document.getElementById('entries-list');
-        if (entriesList) {
-            entriesList.scrollTop = 0;
-        }
-
         // Save entry to nilDB
-        const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
-        const uuid = authData?.uuid;
-
-        if (!uuid) {
-            console.error('No UUID found. User must be logged in.');
-            return;
-        } else {
-            console.log('UUID found:', uuid);
-        }
-
         const message_for_nildb = {
             uuid: uuid,
             date: currentSelectedDate,
@@ -483,6 +472,32 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const dataWritten = await collection.writeToNodes([message_for_nildb]);
             console.log('Data written to nilDB:', dataWritten);
+            const recordId = dataWritten[0]?.data?.created?.[0]; // Extract the created ID
+
+            const data = loadData();
+            const timestamp = new Date().toISOString();
+
+            if (!data[currentSelectedDate]) {
+                data[currentSelectedDate] = [];
+            }
+
+            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp });
+            saveData(data);
+
+            // Clear the input field
+            entryTextArea.value = '';
+
+            // Refresh entries display
+            displayEntries(data[currentSelectedDate]);
+
+            // Mark this date as having entries in the calendar
+            markDateWithEntries(currentSelectedDate);
+
+            // Scroll to the top of the entries list to see the newest entry
+            const entriesList = document.getElementById('entries-list');
+            if (entriesList) {
+                entriesList.scrollTop = 0;
+            }
         } catch (error) {
             console.error('Failed to write data to nilDB:', error);
         }
@@ -508,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Function to select a date and load entries
-    function selectDate(dateStr) {
+    async function selectDate(dateStr) {
         // Remove selected class from previously selected date
         if (currentSelectedDate) {
             const prevEl = calendar.el.querySelector(`.fc-day[data-date="${currentSelectedDate}"]`);
@@ -531,7 +546,46 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('no-date-message').style.display = 'none';
 
         // Fetch and display entries for the selected date
-        fetchEntries(dateStr);
+        try {
+            const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+            const uuid = authData?.uuid;
+
+            if (!uuid) {
+                console.error('No UUID found. User must be logged in.');
+                return;
+            }
+
+            // Use readFromNodes to pull data from nilDB
+            const dataReadFromNilDB = await collection.readFromNodes({ uuid, date: dateStr });
+            console.log('Data read from nilDB:', dataReadFromNilDB);
+
+            // Process and display the fetched entries
+            const entries = dataReadFromNilDB.flatMap(nodeArray => {
+                if (Array.isArray(nodeArray)) {
+                    // Flatten the inner array and map the entries
+                    return nodeArray.map(entry => ({
+                        id: entry._id,
+                        timestamp: entry._created,
+                        text: entry.entry,
+                    }));
+                }
+                return []; // Return an empty array if nodeArray is not an array
+            });
+
+            console.log('Processed entries:', entries);
+
+            // Update local storage with fetched entries
+            const data = loadData();
+            data[dateStr] = entries;
+            saveData(data);
+
+            console.log('Updated local storage with fetched entries:', data[dateStr]);
+
+            // Display the fetched entries
+            displayEntries(data[dateStr]);
+        } catch (error) {
+            console.error('Failed to read data from nilDB:', error);
+        }
     }
 
     // Function to display entries
@@ -784,8 +838,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // Initialize the collection
             await initializeCollection(uuid);
 
-            // Close the modal
-            authModalElement.hide();
+            // Dynamically get the modal instance and close it
+            const authModalInstance = bootstrap.Modal.getInstance(document.getElementById('authModal'));
+            if (authModalInstance) {
+                authModalInstance.hide();
+            }
 
             // Display the logged-in user
             displayLoggedInUser(uuid);

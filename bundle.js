@@ -7812,19 +7812,37 @@ if (cid) {
       day: "numeric"
     });
     function loadData() {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+      const uuid = authData?.uuid;
+      if (!uuid) {
+        console.error("No UUID found. Cannot load data.");
+        return {};
+      }
+      const data = localStorage.getItem(`${STORAGE_KEY}_${uuid}`);
       return data ? JSON.parse(data) : {};
     }
     function saveData(data) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-    function fetchEntries(dateStr) {
-      const data = loadData();
-      const entries = data[dateStr] || [];
-      displayEntries(entries);
+      const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+      const uuid = authData?.uuid;
+      if (!uuid) {
+        console.error("No UUID found. Cannot save data.");
+        return;
+      }
+      localStorage.setItem(`${STORAGE_KEY}_${uuid}`, JSON.stringify(data));
     }
     async function saveEntry() {
       if (!currentSelectedDate) return;
+      const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+      const uuid = authData?.uuid;
+      if (!uuid) {
+        const authModal = new bootstrap.Modal(document.getElementById("authModal"));
+        const authWarning = document.getElementById("auth-warning");
+        authWarning.classList.remove("d-none");
+        authModal.show();
+        return;
+      } else {
+        console.log("UUID found:", uuid);
+      }
       const entryTextArea = document.getElementById("entry-text");
       const entryText = entryTextArea.value.trim();
       if (!entryText) {
@@ -7836,28 +7854,6 @@ if (cid) {
         alert(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
         return;
       }
-      const data = loadData();
-      const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-      if (!data[currentSelectedDate]) {
-        data[currentSelectedDate] = [];
-      }
-      data[currentSelectedDate].push({ text: entryText, timestamp });
-      saveData(data);
-      entryTextArea.value = "";
-      displayEntries(data[currentSelectedDate]);
-      markDateWithEntries(currentSelectedDate);
-      const entriesList = document.getElementById("entries-list");
-      if (entriesList) {
-        entriesList.scrollTop = 0;
-      }
-      const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
-      const uuid = authData?.uuid;
-      if (!uuid) {
-        console.error("No UUID found. User must be logged in.");
-        return;
-      } else {
-        console.log("UUID found:", uuid);
-      }
       const message_for_nildb = {
         uuid,
         date: currentSelectedDate,
@@ -7866,6 +7862,21 @@ if (cid) {
       try {
         const dataWritten = await collection.writeToNodes([message_for_nildb]);
         console.log("Data written to nilDB:", dataWritten);
+        const recordId = dataWritten[0]?.data?.created?.[0];
+        const data = loadData();
+        const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+        if (!data[currentSelectedDate]) {
+          data[currentSelectedDate] = [];
+        }
+        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp });
+        saveData(data);
+        entryTextArea.value = "";
+        displayEntries(data[currentSelectedDate]);
+        markDateWithEntries(currentSelectedDate);
+        const entriesList = document.getElementById("entries-list");
+        if (entriesList) {
+          entriesList.scrollTop = 0;
+        }
       } catch (error) {
         console.error("Failed to write data to nilDB:", error);
       }
@@ -7885,7 +7896,7 @@ if (cid) {
         day: "numeric"
       });
     }
-    function selectDate(dateStr) {
+    async function selectDate(dateStr) {
       if (currentSelectedDate) {
         const prevEl = calendar.el.querySelector(`.fc-day[data-date="${currentSelectedDate}"]`);
         if (prevEl) prevEl.classList.remove("fc-day-selected");
@@ -7896,7 +7907,34 @@ if (cid) {
       document.getElementById("selected-date-header").textContent = formatDisplayDate(dateStr);
       document.getElementById("entry-form-container").style.display = "block";
       document.getElementById("no-date-message").style.display = "none";
-      fetchEntries(dateStr);
+      try {
+        const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+        const uuid = authData?.uuid;
+        if (!uuid) {
+          console.error("No UUID found. User must be logged in.");
+          return;
+        }
+        const dataReadFromNilDB = await collection.readFromNodes({ uuid, date: dateStr });
+        console.log("Data read from nilDB:", dataReadFromNilDB);
+        const entries = dataReadFromNilDB.flatMap((nodeArray) => {
+          if (Array.isArray(nodeArray)) {
+            return nodeArray.map((entry) => ({
+              id: entry._id,
+              timestamp: entry._created,
+              text: entry.entry
+            }));
+          }
+          return [];
+        });
+        console.log("Processed entries:", entries);
+        const data = loadData();
+        data[dateStr] = entries;
+        saveData(data);
+        console.log("Updated local storage with fetched entries:", data[dateStr]);
+        displayEntries(data[dateStr]);
+      } catch (error) {
+        console.error("Failed to read data from nilDB:", error);
+      }
     }
     function displayEntries(entries) {
       const entriesListEl = document.getElementById("entries-list");
@@ -8077,7 +8115,10 @@ if (cid) {
         }
         saveAuthData(uuid, password);
         await initializeCollection(uuid);
-        authModalElement.hide();
+        const authModalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
+        if (authModalInstance) {
+          authModalInstance.hide();
+        }
         displayLoggedInUser(uuid);
       });
     }
