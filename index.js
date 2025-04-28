@@ -318,22 +318,6 @@ class SecretVaultWrapper {
     }
 }
 
-
-function scrub(string) {
-    return string.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-
-function uint8ArrayToHex(uint8Array) {
-    return Array.from(uint8Array)
-      .map(byte => byte.toString(16).padStart(2, '0'))
-      .join('');
-}
-
-function uint8ArrayFromHex(hex) {
-    return new Uint8Array(Buffer.from(hex, "hex"));
-}
-
-
 document.addEventListener('DOMContentLoaded', function() {
     // Global variables
     let currentSelectedDate = null;
@@ -588,10 +572,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Global variable to store the memory queue
+    const memoryQueue = [];
+
     // Function to display entries
     function displayEntries(entries) {
         const entriesListEl = document.getElementById('entries-list');
         const noEntriesMessageEl = document.getElementById('no-entries-message');
+        const memoryDisplayBox = document.getElementById('memory-display-box');
 
         entriesListEl.innerHTML = '';
 
@@ -605,9 +593,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Sort entries by timestamp (newest first)
         entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        entries.forEach((entry, index) => {
+        entries.forEach((entry) => {
             const entryCard = document.createElement('div');
             entryCard.className = 'card entry-card mb-3';
+            entryCard.style.cursor = 'pointer'; // Make it look clickable
 
             // Format timestamp
             const timestamp = new Date(entry.timestamp);
@@ -625,16 +614,101 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <span class="entry-timestamp">${formattedDate} at ${formattedTime}</span>
-                        <div class="entry-actions">
-                        </div>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
                 </div>
             `;
 
+            // Add click event to append the memory to the memory display box
+            entryCard.addEventListener('click', () => {
+                const memoryText = entry.text;
+
+                // Create a new list item for the memory
+                const memoryItem = document.createElement('li');
+                memoryItem.className = 'memory-item';
+                memoryItem.innerHTML = `
+                    <span class="memory-date">${formattedDate}</span>
+                    <span class="memory-text">${memoryText}</span>
+                `;
+
+                // Add the memory to the queue
+                memoryQueue.push(memoryItem);
+
+                // If the queue exceeds 5 items, remove the first one
+                if (memoryQueue.length > 5) {
+                    memoryQueue.shift();
+                }
+
+                // Re-render the memory display box
+                renderMemoryDisplayBox();
+            });
+
             entriesListEl.appendChild(entryCard);
         });
     }
+
+    // Function to render the memory display box
+    function renderMemoryDisplayBox() {
+        const memoryDisplayBox = document.getElementById('memory-display-box');
+
+        // Clear the memory display box
+        memoryDisplayBox.innerHTML = '';
+
+        // If the memory queue is empty, hide the box
+        if (memoryQueue.length === 0) {
+            memoryDisplayBox.style.display = 'none';
+            return;
+        }
+
+        // Otherwise, show the box and render the memories
+        memoryDisplayBox.style.display = 'block';
+        memoryQueue.forEach((item) => {
+            // Create a wrapper div for the memory
+            const memoryCard = document.createElement('div');
+            memoryCard.className = 'card memory-card mb-2'; // Add card styling
+            memoryCard.innerHTML = `
+                <div class="card-body d-flex align-items-start">
+                    <span class="memory-date me-3">${item.querySelector('.memory-date').textContent}</span>
+                    <p class="card-text entry-text memory-text mb-0">${item.querySelector('.memory-text').textContent}</p>
+                </div>
+            `;
+
+            memoryDisplayBox.appendChild(memoryCard);
+        });
+    }
+
+    document.getElementById('ask-secret-llm-btn').addEventListener('click', () => {
+        const privateReflectionInput = document.getElementById('private-reflection-input').value.trim();
+        const memoryDisplayBox = document.getElementById('memory-display-box');
+
+        // Prepare the alert message
+        let alertMessage = 'Your Input:\n';
+        alertMessage += privateReflectionInput ? `${privateReflectionInput}\n\n` : 'No input provided.\n\n';
+
+        alertMessage += 'Selected Memories:\n';
+        if (memoryQueue.length > 0) {
+            memoryQueue.forEach((item) => {
+                const date = item.querySelector('.memory-date').textContent;
+                const text = item.querySelector('.memory-text').textContent;
+                alertMessage += `${date}: ${text}\n`;
+            });
+        } else {
+            alertMessage += 'No memories selected.\n';
+        }
+
+        // Show the alert
+        alert(alertMessage);
+
+        // Clear the memory queue
+        memoryQueue.length = 0;
+
+        // Clear the private reflection input
+        privateReflectionInput.value = '';
+
+        // Re-render the memory display box
+        renderMemoryDisplayBox();
+    });
+
 
     // Function to mark dates with entries in the calendar
     function markDateWithEntries(dateStr) {
@@ -644,13 +718,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Function to display error messages
-    function displayError(message) {
-        // Could implement a toast notification here
-        console.error(message);
-        alert(message);
-    }
-
     // Initialize the calendar and mark dates with entries
     const calendarEl = document.getElementById('calendar');
     const calendar = new FullCalendar.Calendar(calendarEl, {
@@ -658,7 +725,7 @@ document.addEventListener('DOMContentLoaded', function() {
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: '' // Removed the 'dayGridMonth' button
+            right: '', // Removed the 'dayGridMonth' button
         },
         selectable: true,
         dateClick: function(info) {
@@ -666,7 +733,9 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         datesSet: function() {
             markDatesWithEntries();
-        }
+        },
+        contentHeight: 'auto', // Ensure no vertical scrolling
+        height: 'auto', // Automatically adjust height to remove scrollbar
     });
     calendar.render();
 

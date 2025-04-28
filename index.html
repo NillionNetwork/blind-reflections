@@ -104,8 +104,48 @@
             <div class="col-md-6">
                 <div class="card border-0 shadow-sm">
                     <div class="card-body">
-                        <h5 class="card-title mb-3">Select a date</h5>
-                        <div id="calendar"></div>
+                        <div id="calendar" style="max-width: 100%; height: 200px; overflow: hidden;"></div>
+                    </div>
+                </div>
+
+                <!-- New Box for Private Reflections -->
+                <div class="mt-3">
+                    <!-- User-editable textbox -->
+                    <textarea
+                        id="private-reflection-input"
+                        class="form-control mb-2"
+                        placeholder="Let's do some private reflections..."
+                        aria-label="Private Reflection"
+                        rows="2"
+                        style="resize: vertical;"
+                    ></textarea>
+
+                    <!-- Read-only list for memories -->
+                    <ul
+                        id="memory-display-box"
+                        class="list-unstyled p-2 mb-2"
+                        style="background-color: var(--card-bg); border-radius: 4px; display: none;"
+                    ></ul>
+
+                    <div class="d-flex align-items-center justify-content-between">
+                        <button
+                            id="ask-secret-llm-btn"
+                            class="btn btn-accent"
+                        >
+                            Ask SecretLLM
+                        </button>
+                        <div class="d-flex align-items-center ms-3">
+                            <i
+                                class="fas fa-info-circle text-muted me-2"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="top"
+                                title="Click on a date and it'll automatically be added to the SecretLLM searchbox"
+                                style="cursor: pointer;"
+                            ></i>
+                            <span class="text-muted" style="font-size: 0.9rem;">
+                                Select a few memories by clicking on them to pass to SecretLLM.
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -119,10 +159,10 @@
                         <!-- New Entry Form -->
                         <div id="entry-form-container" class="mb-4" style="display: none;">
                             <div class="mb-3">
-                                <label for="entry-text" class="form-label">Add a reflection</label>
+                                <label for="entry-text" class="form-label">Add a memory</label>
                                 <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..."></textarea>
                             </div>
-                            <button type="button" class="btn btn-accent" id="save-entry-btn"><i class="fas fa-save me-1"></i>Save Entry</button>
+                            <button type="button" class="btn btn-accent" id="save-entry-btn"><i class="fas fa-save me-1"></i>Save Memory</button>
                         </div>
 
                         <!-- Entries List -->
@@ -134,7 +174,7 @@
                             <div id="no-entries-message" style="display: none;">
                                 <div class="text-center p-4">
                                     <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
-                                    <p>No entries for this date yet. Write your first reflection!</p>
+                                    <p>No entries for this date yet. Write your first memory!</p>
                                 </div>
                             </div>
                             <div id="entries-list" class="entries-scrollable"></div>

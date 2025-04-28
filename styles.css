@@ -119,6 +119,23 @@ body {
     font-weight: bold;
 }
 
+/* Force smaller day cell heights */
+.fc-daygrid-day-frame {
+    height: 45px !important; /* Force a smaller height for each day cell */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important; /* Remove extra padding */
+}
+
+.fc-daygrid-day {
+    min-height: 0px !important; /* Ensure the minimum height is smaller */
+}
+
+.fc-daygrid-day-number {
+    font-size: 0.8rem; /* Reduce the font size of the day numbers */
+}
+
 /* Remove underlines from calendar links */
 .fc a {
     text-decoration: none;
@@ -128,6 +145,7 @@ body {
 .fc-daygrid-day-number {
     color: var(--text-color);
     font-weight: 500;
+    font-size: 0.8rem; /* Reduce the font size of the day numbers */
 }
 
 /* Keep day names (weekday headers) teal */
@@ -269,6 +287,95 @@ body {
     opacity: 1;
 }
 
+/* Memory display box styles */
+#memory-display-box {
+    background-color: var(--card-bg);
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+#memory-display-box li {
+    position: relative;
+    font-style: italic;
+    margin-bottom: 8px;
+    padding-left: 30px; /* Add space for the triangle and date */
+    list-style: none; /* Remove default bullet points */
+    display: flex;
+    align-items: center;
+}
+
+/* Add a fancy triangle to the right of each memory */
+#memory-display-box li::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 6px 10px 6px 0; /* Triangle dimensions */
+    border-color: transparent var(--teal-color) transparent transparent;
+}
+
+/* Date styling */
+#memory-display-box .memory-date {
+    color: var(--teal-color);
+    font-weight: bold;
+    margin-right: 10px;
+    font-size: 0.9rem;
+}
+
+/* Memory text styling */
+#memory-display-box .memory-text {
+    flex: 1;
+    font-style: italic;
+}
+
+/* Light theme styles */
+[data-bs-theme="light"] #memory-display-box li::before {
+    border-color: transparent transparent transparent var(--teal-color);
+}
+
+/* Dark theme styles */
+[data-bs-theme="dark"] #memory-display-box li::before {
+    border-color: transparent transparent transparent var(--teal-color);
+}
+
+/* Memory card styling */
+.memory-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.memory-card .card-body {
+    padding: 10px;
+    align-items: flex-start; /* Align items at the top */
+    gap: 10px; /* Add spacing between the date and text */
+}
+
+.memory-card .memory-date {
+    color: var(--teal-color);
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+    white-space: nowrap; /* Prevent the date from wrapping */
+    /* display: block; */
+}
+
+.memory-card .memory-text {
+    flex: 1; /* Allow the text to take up remaining space */
+    font-style: italic;
+    word-wrap: break-word;
+    white-space: normal;
+    line-height: 1.5;
+}
+
 /* Button styles - more minimal approach */
 .btn {
     font-weight: 500;
@@ -359,10 +466,16 @@ body {
     .fc .fc-toolbar-title {
         font-size: 1rem !important;
     }
-    
+
     .entries-scrollable {
         max-height: 350px; /* Smaller height on mobile */
     }
+}
+
+#calendar {
+    max-width: 100%;
+    height: 350px; /* Reduced height */
+    overflow: hidden;
 }
 
 /* Header and top bar styling */

@@ -7936,9 +7936,11 @@ if (cid) {
         console.error("Failed to read data from nilDB:", error);
       }
     }
+    const memoryQueue = [];
     function displayEntries(entries) {
       const entriesListEl = document.getElementById("entries-list");
       const noEntriesMessageEl = document.getElementById("no-entries-message");
+      const memoryDisplayBox = document.getElementById("memory-display-box");
       entriesListEl.innerHTML = "";
       if (!entries || entries.length === 0) {
         noEntriesMessageEl.style.display = "block";
@@ -7946,9 +7948,10 @@ if (cid) {
       }
       noEntriesMessageEl.style.display = "none";
       entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      entries.forEach((entry, index) => {
+      entries.forEach((entry) => {
         const entryCard = document.createElement("div");
         entryCard.className = "card entry-card mb-3";
+        entryCard.style.cursor = "pointer";
         const timestamp = new Date(entry.timestamp);
         const formattedTime = timestamp.toLocaleTimeString("en-US", {
           hour: "2-digit",
@@ -7963,24 +7966,74 @@ if (cid) {
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <span class="entry-timestamp">${formattedDate} at ${formattedTime}</span>
-                        <div class="entry-actions">
-                        </div>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
                 </div>
             `;
+        entryCard.addEventListener("click", () => {
+          const memoryText = entry.text;
+          const memoryItem = document.createElement("li");
+          memoryItem.className = "memory-item";
+          memoryItem.innerHTML = `
+                    <span class="memory-date">${formattedDate}</span>
+                    <span class="memory-text">${memoryText}</span>
+                `;
+          memoryQueue.push(memoryItem);
+          if (memoryQueue.length > 5) {
+            memoryQueue.shift();
+          }
+          renderMemoryDisplayBox();
+        });
         entriesListEl.appendChild(entryCard);
       });
     }
+    function renderMemoryDisplayBox() {
+      const memoryDisplayBox = document.getElementById("memory-display-box");
+      memoryDisplayBox.innerHTML = "";
+      if (memoryQueue.length === 0) {
+        memoryDisplayBox.style.display = "none";
+        return;
+      }
+      memoryDisplayBox.style.display = "block";
+      memoryQueue.forEach((item) => {
+        const memoryCard = document.createElement("div");
+        memoryCard.className = "card memory-card mb-2";
+        memoryCard.innerHTML = `
+                <div class="card-body d-flex align-items-start">
+                    <span class="memory-date me-3">${item.querySelector(".memory-date").textContent}</span>
+                    <p class="card-text entry-text memory-text mb-0">${item.querySelector(".memory-text").textContent}</p>
+                </div>
+            `;
+        memoryDisplayBox.appendChild(memoryCard);
+      });
+    }
+    document.getElementById("ask-secret-llm-btn").addEventListener("click", () => {
+      const privateReflectionInput = document.getElementById("private-reflection-input").value.trim();
+      const memoryDisplayBox = document.getElementById("memory-display-box");
+      let alertMessage = "Your Input:\n";
+      alertMessage += privateReflectionInput ? `${privateReflectionInput}
+
+` : "No input provided.\n\n";
+      alertMessage += "Selected Memories:\n";
+      if (memoryQueue.length > 0) {
+        memoryQueue.forEach((item) => {
+          const date = item.querySelector(".memory-date").textContent;
+          const text = item.querySelector(".memory-text").textContent;
+          alertMessage += `${date}: ${text}
+`;
+        });
+      } else {
+        alertMessage += "No memories selected.\n";
+      }
+      alert(alertMessage);
+      memoryQueue.length = 0;
+      renderMemoryDisplayBox();
+    });
     function markDateWithEntries(dateStr) {
       const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
       if (dateEl) {
         dateEl.classList.add("fc-day-has-entries");
       }
-    }
-    function displayError(message) {
-      console.error(message);
-      alert(message);
     }
     const calendarEl = document.getElementById("calendar");
     const calendar = new FullCalendar.Calendar(calendarEl, {
@@ -7997,7 +8050,11 @@ if (cid) {
       },
       datesSet: function() {
         markDatesWithEntries();
-      }
+      },
+      contentHeight: "auto",
+      // Ensure no vertical scrolling
+      height: "auto"
+      // Automatically adjust height to remove scrollbar
     });
     calendar.render();
     markDatesWithEntries();
