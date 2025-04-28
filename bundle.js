@@ -7888,7 +7888,8 @@ if (cid) {
       });
     }
     function formatDisplayDate(dateStr) {
-      const date = new Date(dateStr);
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
       return date.toLocaleDateString("en-US", {
         weekday: "long",
         year: "numeric",
@@ -7971,11 +7972,13 @@ if (cid) {
                 </div>
             `;
         entryCard.addEventListener("click", () => {
+          console.log("Entry clicked:", entry);
           const memoryText = entry.text;
+          const memoryDate = currentSelectedDate;
           const memoryItem = document.createElement("li");
           memoryItem.className = "memory-item";
           memoryItem.innerHTML = `
-                    <span class="memory-date">${formattedDate}</span>
+                    <span class="memory-date">${memoryDate}</span>
                     <span class="memory-text">${memoryText}</span>
                 `;
           memoryQueue.push(memoryItem);
@@ -8008,10 +8011,10 @@ if (cid) {
       });
     }
     document.getElementById("ask-secret-llm-btn").addEventListener("click", () => {
-      const privateReflectionInput = document.getElementById("private-reflection-input").value.trim();
+      const privateReflectionInput = document.getElementById("private-reflection-input");
       const memoryDisplayBox = document.getElementById("memory-display-box");
       let alertMessage = "Your Input:\n";
-      alertMessage += privateReflectionInput ? `${privateReflectionInput}
+      alertMessage += privateReflectionInput.value.trim() ? `${privateReflectionInput.value.trim()}
 
 ` : "No input provided.\n\n";
       alertMessage += "Selected Memories:\n";
@@ -8027,6 +8030,8 @@ if (cid) {
       }
       alert(alertMessage);
       memoryQueue.length = 0;
+      privateReflectionInput.value = "";
+      privateReflectionInput.setAttribute("placeholder", "Let's do some private reflections...");
       renderMemoryDisplayBox();
     });
     function markDateWithEntries(dateStr) {

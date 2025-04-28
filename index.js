@@ -497,7 +497,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to format date for display
     function formatDisplayDate(dateStr) {
-        const date = new Date(dateStr);
+        // Parse the date string as a local date
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // Month is 0-based in JavaScript
+
         return date.toLocaleDateString('en-US', {
             weekday: 'long',
             year: 'numeric',
@@ -621,13 +624,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Add click event to append the memory to the memory display box
             entryCard.addEventListener('click', () => {
+                console.log('Entry clicked:', entry);
                 const memoryText = entry.text;
+
+                // Use the selected date instead of the entry's timestamp
+                const memoryDate = currentSelectedDate;
 
                 // Create a new list item for the memory
                 const memoryItem = document.createElement('li');
                 memoryItem.className = 'memory-item';
                 memoryItem.innerHTML = `
-                    <span class="memory-date">${formattedDate}</span>
+                    <span class="memory-date">${memoryDate}</span>
                     <span class="memory-text">${memoryText}</span>
                 `;
 
@@ -678,12 +685,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('ask-secret-llm-btn').addEventListener('click', () => {
-        const privateReflectionInput = document.getElementById('private-reflection-input').value.trim();
+        const privateReflectionInput = document.getElementById('private-reflection-input');
         const memoryDisplayBox = document.getElementById('memory-display-box');
 
         // Prepare the alert message
         let alertMessage = 'Your Input:\n';
-        alertMessage += privateReflectionInput ? `${privateReflectionInput}\n\n` : 'No input provided.\n\n';
+        alertMessage += privateReflectionInput.value.trim() ? `${privateReflectionInput.value.trim()}\n\n` : 'No input provided.\n\n';
 
         alertMessage += 'Selected Memories:\n';
         if (memoryQueue.length > 0) {
@@ -702,8 +709,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Clear the memory queue
         memoryQueue.length = 0;
 
-        // Clear the private reflection input
+        // Clear the private reflection input and restore the placeholder
         privateReflectionInput.value = '';
+        privateReflectionInput.setAttribute('placeholder', "Let's do some private reflections...");
 
         // Re-render the memory display box
         renderMemoryDisplayBox();
