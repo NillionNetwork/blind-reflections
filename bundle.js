@@ -7859,6 +7859,7 @@ if (cid) {
         date: currentSelectedDate,
         entry: entryText
       };
+      showLoadingAnimation("Saving your memory...");
       try {
         const dataWritten = await collection.writeToNodes([message_for_nildb]);
         console.log("Data written to nilDB:", dataWritten);
@@ -7879,6 +7880,8 @@ if (cid) {
         }
       } catch (error) {
         console.error("Failed to write data to nilDB:", error);
+      } finally {
+        hideLoadingAnimation();
       }
     }
     function markDatesWithEntries() {
@@ -7908,6 +7911,7 @@ if (cid) {
       document.getElementById("selected-date-header").textContent = formatDisplayDate(dateStr);
       document.getElementById("entry-form-container").style.display = "block";
       document.getElementById("no-date-message").style.display = "none";
+      showLoadingAnimation("Fetching memories...");
       try {
         const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
         const uuid = authData?.uuid;
@@ -7935,6 +7939,8 @@ if (cid) {
         displayEntries(data[dateStr]);
       } catch (error) {
         console.error("Failed to read data from nilDB:", error);
+      } finally {
+        hideLoadingAnimation();
       }
     }
     const memoryQueue = [];
@@ -8063,6 +8069,7 @@ if (cid) {
         body: raw,
         redirect: "follow"
       };
+      showLoadingAnimation("Saving your memory...");
       try {
         const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
         if (!response.ok) {
@@ -8074,6 +8081,8 @@ if (cid) {
       } catch (error) {
         console.error("Error calling the API:", error);
         alert("Failed to process your request. Please try again later.");
+      } finally {
+        hideLoadingAnimation();
       }
       memoryQueue.length = 0;
       privateReflectionInput.value = "";
@@ -8148,6 +8157,35 @@ if (cid) {
       const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
       if (dateEl) {
         dateEl.classList.add("fc-day-has-entries");
+      }
+    }
+    function showLoadingAnimation(message = "Loading...") {
+      const loaderHTML = `
+            <div id="custom-loader-overlay"
+                style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.4);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1055;
+                ">
+                <div class="text-center bg-dark p-3 rounded shadow">
+                    <img src="./nillion-loading.gif" alt="Loading" style="width: 50px; height: 50px;">
+                    <p class="mt-2 text-light" style="font-size: 0.85rem;">${message}</p>
+                </div>
+            </div>
+        `;
+      document.body.insertAdjacentHTML("beforeend", loaderHTML);
+    }
+    function hideLoadingAnimation() {
+      const loaderOverlay = document.getElementById("custom-loader-overlay");
+      if (loaderOverlay) {
+        loaderOverlay.remove();
       }
     }
     const calendarEl = document.getElementById("calendar");
