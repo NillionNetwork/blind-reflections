@@ -1200,9 +1200,10 @@ function initializeAuth() {
     // Register and login buttons
     const registerButton = document.getElementById('register-button');
     const loginButton = document.getElementById('login-button');
-    const metaMaskButton = document.getElementById('connect-metamask-btn'); // Get MetaMask button
+    // Get *all* Connect Wallet buttons (using a class is better, but ID works for now)
+    const connectWalletButtons = document.querySelectorAll('#connect-metamask-btn'); // Keep ID for now
 
-    // Login form elements (needed for MetaMask pre-fill)
+    // Login form elements (needed for Wallet Connect pre-fill)
     const loginUsernameInput = document.getElementById('login-username');
     const loginPasswordInput = document.getElementById('login-password');
     const loginTabLink = document.getElementById('login-tab'); // Get the login tab link
@@ -1433,46 +1434,54 @@ function initializeAuth() {
         });
     }
 
-    // Handle MetaMask Connect button (pre-fill login form)
-    if (metaMaskButton && loginUsernameInput && loginPasswordInput && loginTabLink) {
-        metaMaskButton.addEventListener('click', async function() {
-            if (typeof window.ethereum === 'undefined') {
-                showWarningModal('MetaMask is not installed! Please install it to use this feature.');
+    // Define the Wallet Connect click handler logic
+    async function handleWalletConnect() {
+        if (typeof window.ethereum === 'undefined') {
+            showWarningModal('No Ethereum wallet detected! Please install a browser extension like MetaMask.');
+            return;
+        }
+
+        // Ensure login form elements are available
+        if (!loginUsernameInput || !loginPasswordInput || !loginTabLink) {
+            console.error('Login form elements not found, cannot pre-fill.');
+            showWarningModal('Internal error: Cannot access login form elements.');
+            return;
+        }
+
+        try {
+            // Request account access
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            if (!accounts || accounts.length === 0) {
+                showWarningModal('Could not retrieve account from wallet.');
                 return;
             }
+            const address = accounts[0]; // User's Ethereum address
+            console.log(`Wallet Connect: Fetched address=${address}`);
 
-            try {
-                // Request account access
-                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                if (!accounts || accounts.length === 0) {
-                    showWarningModal('Could not retrieve account from MetaMask.');
-                    return;
-                }
-                const address = accounts[0]; // User's Ethereum address
+            // Pre-fill the login form with the address
+            loginUsernameInput.value = address;
 
-                console.log(`MetaMask Connect: Fetched address=${address}`);
+            // Switch to the Login tab
+            const loginTab = new bootstrap.Tab(loginTabLink);
+            loginTab.show();
 
-                // Pre-fill the login form with the address
-                loginUsernameInput.value = address;
+            // Focus the password field for the user
+            loginPasswordInput.focus();
 
-                // Switch to the Login tab
-                const loginTab = new bootstrap.Tab(loginTabLink);
-                loginTab.show();
-
-                // Focus the password field for the user
-                loginPasswordInput.focus();
-
-                // --- Removed direct login logic ---
-                // User will now manually enter password and click the main Login button.
-
-            } catch (error) {
-                console.error('Error connecting with MetaMask:', error);
-                let userMessage = 'Failed to connect with MetaMask.';
-                if (error.code === 4001) { // EIP-1193 userRejectedRequest error
-                    userMessage = 'MetaMask connection request rejected.';
-                }
-                showWarningModal(userMessage);
+        } catch (error) {
+            console.error('Error connecting wallet:', error);
+            let userMessage = 'Failed to connect wallet.';
+            if (error.code === 4001) { // EIP-1193 userRejectedRequest error
+                userMessage = 'Wallet connection request rejected.';
             }
+            showWarningModal(userMessage);
+        }
+    }
+
+    // Handle Connect Wallet button (attach listener to both buttons)
+    if (connectWalletButtons.length > 0) {
+        connectWalletButtons.forEach(button => {
+            button.addEventListener('click', handleWalletConnect);
         });
     }
 

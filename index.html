@@ -64,7 +64,12 @@
                                 <label for="register-password" class="form-label">Password</label>
                                 <input type="password" class="form-control" id="register-password" placeholder="Enter your password">
                             </div>
-                            <button id="register-button" class="btn btn-accent">Register</button>
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <button id="register-button" class="btn btn-accent">Register</button>
+                                <button type="button" class="btn btn-outline-warning" id="connect-metamask-btn" title="Pre-fill Unique Identifier with your wallet address">
+                                    <i class="fas fa-wallet me-1"></i>Connect Wallet
+                                </button>
+                            </div>
                         </div>
                         <div class="tab-pane fade" id="login" role="tabpanel" aria-labelledby="login-tab">
                             <div class="mb-3">
@@ -75,16 +80,15 @@
                                 <label for="login-password" class="form-label">Password</label>
                                 <input type="password" class="form-control" id="login-password" placeholder="Enter your password">
                             </div>
-                            <button id="login-button" class="btn btn-accent">Login</button>
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <button id="login-button" class="btn btn-accent">Login</button>
+                                <button type="button" class="btn btn-outline-warning" id="connect-metamask-btn" title="Pre-fill Unique Identifier with your wallet address">
+                                    <i class="fas fa-wallet me-1"></i>Connect Wallet
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer justify-content-center">
-                    <p class="text-muted small mb-2">Or connect with your wallet:</p>
-                     <button type="button" class="btn btn-warning" id="connect-metamask-btn">
-                         <img src="./metamask-fox.png" alt="MetaMask" width="20" height="20" class="me-2">Connect with MetaMask
-                     </button>
-                 </div>
             </div>
         </div>
     </div>

@@ -8397,7 +8397,7 @@ ${memoryContext}`
     const userDisplaySpan = document.getElementById("user-display") || createUserDisplayElement();
     const registerButton = document.getElementById("register-button");
     const loginButton = document.getElementById("login-button");
-    const metaMaskButton = document.getElementById("connect-metamask-btn");
+    const connectWalletButtons = document.querySelectorAll("#connect-metamask-btn");
     const loginUsernameInput = document.getElementById("login-username");
     const loginPasswordInput = document.getElementById("login-password");
     const loginTabLink = document.getElementById("login-tab");
@@ -8558,32 +8558,40 @@ ${memoryContext}`
         }
       });
     }
-    if (metaMaskButton && loginUsernameInput && loginPasswordInput && loginTabLink) {
-      metaMaskButton.addEventListener("click", async function() {
-        if (typeof window.ethereum === "undefined") {
-          showWarningModal("MetaMask is not installed! Please install it to use this feature.");
+    async function handleWalletConnect() {
+      if (typeof window.ethereum === "undefined") {
+        showWarningModal("No Ethereum wallet detected! Please install a browser extension like MetaMask.");
+        return;
+      }
+      if (!loginUsernameInput || !loginPasswordInput || !loginTabLink) {
+        console.error("Login form elements not found, cannot pre-fill.");
+        showWarningModal("Internal error: Cannot access login form elements.");
+        return;
+      }
+      try {
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        if (!accounts || accounts.length === 0) {
+          showWarningModal("Could not retrieve account from wallet.");
           return;
         }
-        try {
-          const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-          if (!accounts || accounts.length === 0) {
-            showWarningModal("Could not retrieve account from MetaMask.");
-            return;
-          }
-          const address = accounts[0];
-          console.log(`MetaMask Connect: Fetched address=${address}`);
-          loginUsernameInput.value = address;
-          const loginTab = new bootstrap.Tab(loginTabLink);
-          loginTab.show();
-          loginPasswordInput.focus();
-        } catch (error) {
-          console.error("Error connecting with MetaMask:", error);
-          let userMessage = "Failed to connect with MetaMask.";
-          if (error.code === 4001) {
-            userMessage = "MetaMask connection request rejected.";
-          }
-          showWarningModal(userMessage);
+        const address = accounts[0];
+        console.log(`Wallet Connect: Fetched address=${address}`);
+        loginUsernameInput.value = address;
+        const loginTab = new bootstrap.Tab(loginTabLink);
+        loginTab.show();
+        loginPasswordInput.focus();
+      } catch (error) {
+        console.error("Error connecting wallet:", error);
+        let userMessage = "Failed to connect wallet.";
+        if (error.code === 4001) {
+          userMessage = "Wallet connection request rejected.";
         }
+        showWarningModal(userMessage);
+      }
+    }
+    if (connectWalletButtons.length > 0) {
+      connectWalletButtons.forEach((button) => {
+        button.addEventListener("click", handleWalletConnect);
       });
     }
     if (registerTabLink && uuidSpan) {
