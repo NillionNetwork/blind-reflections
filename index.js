@@ -4,8 +4,10 @@ import { createJWT, ES256KSigner } from 'did-jwt';
 
 window.Buffer = Buffer; // Required for in-browser use of eciesjs.
 
-// Declare `collection` as a global variable
-let collection;
+// Application state container
+const appState = {
+    collection: null, // Holds the SecretVaultWrapper instance
+};
 
 /* Organization configuration for nilDB. */
 const NILDB = {
@@ -31,10 +33,11 @@ const NILDB = {
 
 // In the clear
 const SCHEMA = 'fa800faa-c7ec-4a09-bf76-6ec768ee6299';
+const AGGREGATION = '87b54dc5-4229-455f-9d60-2c6cf315a74a';
 
 // With shares
 // const SCHEMA = 'd6381b22-a274-44f5-b1f4-0cd03526ed03';
-
+// const AGGREGATION = 'eae83257-c0f4-4752-9042-0bc83c344b8b';
 
 class SecretVaultWrapper {
     constructor(
@@ -316,11 +319,66 @@ class SecretVaultWrapper {
       }
       return results;
     }
+
+    /**
+     * Executes a query on a single node and returns the results.
+     *
+     * @param {object} node - The target node object (should contain 'url' and 'did').
+     * @param {object} queryPayload - The query payload to execute.
+     * @returns {Promise<object>} - A promise resolving to the query response from the node.
+     */
+    async executeQueryOnSingleNode(node, queryPayload) {
+        if (!node || !node.url || !node.did) {
+            console.error("❌ Invalid node object provided:", node);
+            return { node: node?.url || 'unknown', error: "Invalid node object" };
+        }
+        if (!queryPayload) {
+             console.error("❌ Query payload cannot be empty");
+             return { node: node.url, error: "Query payload cannot be empty" };
+        }
+
+        try {
+            const jwt = await this.generateNodeToken(node.did);
+            const result = await this.makeRequest(
+                node.url,
+                'queries/execute', // Endpoint for query execution
+                jwt,
+                queryPayload
+            );
+
+            // Check if the request itself resulted in an error structure
+            if (result && result.error) {
+                 console.error(`❌ Query execution failed on ${node.url} with status ${result.status}:`, result.error);
+                 return {
+                     node: node.url,
+                     status: result.status,
+                     error: result.error,
+                 };
+            }
+
+            // If successful, return the node URL and the data from the response
+            return {
+                node: node.url,
+                status: result.status,
+                data: result.data || [], // Use the 'data' field from makeRequest result
+            };
+        } catch (error) {
+            // Catch errors from generateNodeToken or unexpected issues in makeRequest
+            console.error(`❌ Failed to execute query on ${node.url}:`, error.message);
+            return {
+                node: node.url,
+                status: error.status || null, // Include status if available on error object
+                error: error.message || "An unknown error occurred",
+            };
+        }
+    }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+// Function to initialize application logic for reflections
+function initializeReflectionsApp() {
     // Global variables
     let currentSelectedDate = null;
+    let calendar;
 
     // Local storage key
     const STORAGE_KEY = 'blind_reflections_data';
@@ -421,7 +479,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!uuid) {
             const authModal = new bootstrap.Modal(document.getElementById('authModal'));
             showWarningModal('You must be logged in to save a memory.');
-            authModal.show();
+            // Assuming authModal initialization is handled elsewhere or needed here
+            if (authModal) authModal.show(); // Requires authModal initialization setup
             return;
         }
 
@@ -452,7 +511,10 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoadingAnimation("Saving your memory...");
 
         try {
-            const dataWritten = await collection.writeToNodes([message_for_nildb]);
+            if (!appState.collection) {
+                throw new Error("Collection not initialized. Please log in.");
+            }
+            const dataWritten = await appState.collection.writeToNodes([message_for_nildb]);
             console.log('Data written to nilDB:', dataWritten);
             const recordId = dataWritten[0]?.data?.created?.[0]; // Extract the created ID
 
@@ -473,15 +535,20 @@ document.addEventListener('DOMContentLoaded', function() {
             displayEntries(data[currentSelectedDate]);
 
             // Mark this date as having entries in the calendar
-            markDateWithEntries(currentSelectedDate);
+            markDateWithEntriesHelper(currentSelectedDate);
 
             // Scroll to the top of the entries list to see the newest entry
             const entriesList = document.getElementById('entries-list');
             if (entriesList) {
                 entriesList.scrollTop = 0;
             }
+
+            // Refresh histogram data
+            runAndLogInitialQuery();
+
         } catch (error) {
             console.error('Failed to write data to nilDB:', error);
+            showWarningModal(`Failed to save memory: ${error.message}`);
         } finally {
             // Hide loading animation
             hideLoadingAnimation();
@@ -492,8 +559,17 @@ document.addEventListener('DOMContentLoaded', function() {
     function markDatesWithEntries() {
         const data = loadData();
         Object.keys(data).forEach(dateStr => {
-            markDateWithEntries(dateStr);
+            markDateWithEntriesHelper(dateStr);
         });
+    }
+
+    // Helper function to mark a single date
+    function markDateWithEntriesHelper(dateStr) {
+        if (!calendar) return; // Guard clause if calendar isn't initialized yet
+        const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
+        if (dateEl) {
+            dateEl.classList.add('fc-day-has-entries');
+        }
     }
 
     // Function to format date for display
@@ -512,6 +588,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to select a date and load entries
     async function selectDate(dateStr) {
+        if (!calendar) return;
         // Remove selected class from previously selected date
         if (currentSelectedDate) {
             const prevEl = calendar.el.querySelector(`.fc-day[data-date="${currentSelectedDate}"]`);
@@ -542,12 +619,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const uuid = authData?.uuid;
 
             if (!uuid) {
-                console.error('No UUID found. User must be logged in.');
+                showWarningModal('You must be logged in to view memories.');
                 return;
             }
 
+            if (!appState.collection) {
+                throw new Error("Collection not initialized. Please log in.");
+            }
+
             // Use readFromNodes to pull data from nilDB
-            const dataReadFromNilDB = await collection.readFromNodes({ uuid, date: dateStr });
+            const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
             console.log('Data read from nilDB:', dataReadFromNilDB);
 
             // Process and display the fetched entries
@@ -574,6 +655,7 @@ document.addEventListener('DOMContentLoaded', function() {
             displayEntries(data[dateStr]);
         } catch (error) {
             console.error('Failed to read data from nilDB:', error);
+            showWarningModal(`Failed to fetch memories: ${error.message}`);
         } finally {
             // Hide loading animation
             hideLoadingAnimation();
@@ -605,6 +687,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const entryCard = document.createElement('div');
             entryCard.className = 'card entry-card mb-3';
             entryCard.style.cursor = 'pointer'; // Make it look clickable
+            entryCard.setAttribute('data-entry-id', entry.id); // Store ID for reference
 
             // Format timestamp
             const timestamp = new Date(entry.timestamp);
@@ -634,16 +717,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Use the selected date instead of the entry's timestamp
                 const memoryDate = currentSelectedDate;
 
-                // Create a new list item for the memory
-                const memoryItem = document.createElement('li');
-                memoryItem.className = 'memory-item';
-                memoryItem.innerHTML = `
-                    <span class="memory-date">${memoryDate}</span>
-                    <span class="memory-text">${memoryText}</span>
-                `;
+                // Avoid adding duplicate memories to the queue
+                const alreadyExists = memoryQueue.some(item => item.id === entry.id);
+                if (alreadyExists) return;
+
+                // Create data structure for the memory
+                const memoryData = { id: entry.id, date: memoryDate, text: memoryText };
 
                 // Add the memory to the queue
-                memoryQueue.push(memoryItem);
+                memoryQueue.push(memoryData);
 
                 // If the queue exceeds 5 items, remove the first one
                 if (memoryQueue.length > 5) {
@@ -673,14 +755,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Otherwise, show the box and render the memories
         memoryDisplayBox.style.display = 'block';
-        memoryQueue.forEach((item) => {
+        memoryQueue.forEach((itemData) => {
             // Create a wrapper div for the memory
             const memoryCard = document.createElement('div');
             memoryCard.className = 'card memory-card mb-2'; // Add card styling
             memoryCard.innerHTML = `
                 <div class="card-body d-flex align-items-start">
-                    <span class="memory-date me-3">${item.querySelector('.memory-date').textContent}</span>
-                    <p class="card-text entry-text memory-text mb-0">${item.querySelector('.memory-text').textContent}</p>
+                    <span class="memory-date me-3">${itemData.date}</span>
+                    <p class="card-text entry-text memory-text mb-0">${itemData.text}</p>
                 </div>
             `;
 
@@ -703,8 +785,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const memoryDisplayBox = document.getElementById('memory-display-box');
-
         // Prepare the messages for the API call
         const messages = [];
 
@@ -719,14 +799,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add selected memories as messages
         if (memoryQueue.length > 0) {
             const memoryContext = memoryQueue.map((item) => {
-                const date = item.querySelector('.memory-date').textContent;
-                const text = item.querySelector('.memory-text').textContent;
-                return `Memory from ${date}: ${text}`;
-            }).join('\n');
+                return `Memory from ${item.date}: ${item.text}`; // Use item.date and item.text
+            }).join('\n\n'); // Add more space between memories
 
             messages.push({
                 role: 'system',
-                content: memoryContext,
+                content: `Context based on selected memories:\n${memoryContext}`,
             });
         } else {
             console.warn('No memories selected.');
@@ -736,18 +814,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const myHeaders = new Headers();
         myHeaders.append("Content-Type", "application/json");
         myHeaders.append("Accept", "application/json");
-        myHeaders.append("Authorization", "Bearer Nillion2025");
+        myHeaders.append("Authorization", "Bearer Nillion2025"); // TODO: Replace with secure method
 
         console.log('Messages for API:', messages);
 
         const raw = JSON.stringify({
-            model: "meta-llama/Llama-3.1-8B-Instruct",
+            model: "meta-llama/Llama-3.1-8B-Instruct", // TODO: Move to config
             messages: messages,
             temperature: 0.2,
             top_p: 0.95,
             max_tokens: 2048,
             stream: false,
-            nilrag: {}
+            nilrag: {} // TODO: Understand what this does or remove if unnecessary
         });
 
         const requestOptions = {
@@ -762,20 +840,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Make the API call
         try {
+            // TODO: Move URL to config
             const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
 
             if (!response.ok) {
-                throw new Error('Failed to fetch response from the API');
+                const errorText = await response.text();
+                throw new Error(`API Error (${response.status}): ${errorText}`);
             }
 
             const result = await response.json();
             console.log('API Response:', result);
 
             // Show the response in a modal
-            showLLMResponseModal(result.choices[0].message.content);
+            if (result.choices && result.choices[0] && result.choices[0].message) {
+                 showLLMResponseModal(result.choices[0].message.content);
+            } else {
+                throw new Error("Invalid response structure from API");
+            }
+
         } catch (error) {
             console.error('Error calling the API:', error);
-            alert('Failed to process your request. Please try again later.');
+            showWarningModal(`Failed to process request: ${error.message}`);
         } finally {
             // Hide loading animation
             hideLoadingAnimation();
@@ -792,129 +877,121 @@ document.addEventListener('DOMContentLoaded', function() {
         renderMemoryDisplayBox();
     });
 
-    // Function to display the LLM response in a modal
+    // Function to display the LLM response in a modal using template
     function showLLMResponseModal(responseContent) {
-        // Create the modal HTML
-        const modalHTML = `
-            <div class="modal fade" id="llmResponseModal" tabindex="-1" aria-labelledby="llmResponseModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
-                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
-                            <h5 class="modal-title" id="llmResponseModalLabel" style="color: var(--teal-color);">Blind Reflections</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p style="white-space: pre-wrap; font-family: var(--font-family);">${responseContent}</p>
-                        </div>
-                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
-                            <button id="copy-response-btn" class="btn btn-outline-accent">Copy Response</button>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+        const template = document.getElementById('llm-response-modal-template');
+        if (!template) {
+            console.error('LLM response modal template not found!');
+            alert('Error displaying response.'); // Fallback
+            return;
+        }
 
-        // Append the modal to the body
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        const clone = template.content.cloneNode(true);
+        const modalElement = clone.querySelector('.modal'); // Get the modal root element
+        const responseContentElement = clone.querySelector('.response-content');
+        const copyButton = clone.querySelector('.copy-response-btn');
 
-        // Show the modal
-        const modalElement = new bootstrap.Modal(document.getElementById('llmResponseModal'));
-        modalElement.show();
+        if (!modalElement || !responseContentElement || !copyButton) {
+            console.error('Essential elements missing in LLM response modal template!');
+            return;
+        }
+
+        responseContentElement.textContent = responseContent;
+
+        // Append the cloned modal to the body *before* initializing
+        document.body.appendChild(modalElement);
+
+        // Show the modal using Bootstrap's JS
+        const modalInstance = new bootstrap.Modal(modalElement);
+        modalInstance.show();
 
         // Add copy functionality
-        document.getElementById('copy-response-btn').addEventListener('click', () => {
+        copyButton.addEventListener('click', () => {
             navigator.clipboard.writeText(responseContent)
                 .then(() => {
-                    const copyButton = document.getElementById('copy-response-btn');
                     copyButton.textContent = 'Copied!';
+                    copyButton.disabled = true;
                     setTimeout(() => {
                         copyButton.textContent = 'Copy Response';
+                        copyButton.disabled = false;
                     }, 1500);
                 })
                 .catch((err) => {
                     console.error('Failed to copy text:', err);
+                    // Optionally show a small error message near the button
                 });
         });
 
-        // Remove the modal from the DOM when hidden
-        document.getElementById('llmResponseModal').addEventListener('hidden.bs.modal', () => {
-            document.getElementById('llmResponseModal').remove();
+        // Remove the modal from the DOM when hidden to prevent ID conflicts
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            modalElement.remove();
         });
     }
 
-    // Function to display a warning modal
+    // Function to display a warning modal using template
     function showWarningModal(message) {
-        // Create the modal HTML
-        const modalHTML = `
-            <div class="modal fade" id="warningModal" tabindex="-1" aria-labelledby="warningModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
-                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
-                            <h5 class="modal-title" id="warningModalLabel" style="color: #FF6F61;">Warning</h5> <!-- Pastel red -->
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p style="font-weight: font-family: var(--font-family);">${message}</p> <!-- Text matches theme -->
-                        </div>
-                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+        const template = document.getElementById('warning-modal-template');
+        if (!template) {
+             console.error('Warning modal template not found!');
+             alert(message); // Fallback
+             return;
+        }
 
-        // Append the modal to the body
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        const clone = template.content.cloneNode(true);
+        const modalElement = clone.querySelector('.modal');
+        const messageElement = clone.querySelector('.warning-message');
+
+        if (!modalElement || !messageElement) {
+             console.error('Essential elements missing in warning modal template!');
+             return;
+        }
+
+        messageElement.textContent = message;
+
+        // Append the cloned modal to the body *before* initializing
+        document.body.appendChild(modalElement);
 
         // Show the modal
-        const modalElement = new bootstrap.Modal(document.getElementById('warningModal'));
-        modalElement.show();
+        const modalInstance = new bootstrap.Modal(modalElement);
+        modalInstance.show();
 
         // Remove the modal from the DOM when hidden
-        document.getElementById('warningModal').addEventListener('hidden.bs.modal', () => {
-            document.getElementById('warningModal').remove();
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            modalElement.remove();
         });
     }
 
-    // Function to mark dates with entries in the calendar
-    function markDateWithEntries(dateStr) {
-        const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
-        if (dateEl) {
-            dateEl.classList.add('fc-day-has-entries');
-        }
-    }
-
-    // Function to show loading animation
+    // Function to show loading animation using template
     function showLoadingAnimation(message = "Loading...") {
-        const loaderHTML = `
-            <div id="custom-loader-overlay"
-                style="
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0,0,0,0.4);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 1055;
-                ">
-                <div class="text-center bg-dark p-3 rounded shadow">
-                    <img src="./nillion-loading.gif" alt="Loading" style="width: 50px; height: 50px;">
-                    <p class="mt-2 text-light" style="font-size: 0.85rem;">${message}</p>
-                </div>
-            </div>
-        `;
+        // Remove any existing loader first
+        hideLoadingAnimation();
 
-        document.body.insertAdjacentHTML('beforeend', loaderHTML);
+        const template = document.getElementById('loading-animation-template');
+         if (!template) {
+             console.error('Loading animation template not found!');
+             return;
+         }
+
+        const clone = template.content.cloneNode(true);
+        const loaderElement = clone.querySelector('.custom-loader-overlay'); // Select the main container
+        const messageElement = clone.querySelector('.loading-message');
+
+         if (!loaderElement || !messageElement) {
+             console.error('Essential elements missing in loading template!');
+             return;
+         }
+
+        messageElement.textContent = message;
+
+        // Assign an ID to the loader for easy removal
+        loaderElement.id = 'active-loader-overlay';
+
+        document.body.appendChild(loaderElement); // Append the container
     }
 
     // Function to hide the loading animation
     function hideLoadingAnimation() {
-        const loaderOverlay = document.getElementById('custom-loader-overlay');
+        const loaderOverlay = document.getElementById('active-loader-overlay'); // Use the assigned ID
         if (loaderOverlay) {
             loaderOverlay.remove();
         }
@@ -922,7 +999,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize the calendar and mark dates with entries
     const calendarEl = document.getElementById('calendar');
-    const calendar = new FullCalendar.Calendar(calendarEl, {
+    calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: {
             left: 'prev,next today',
@@ -934,14 +1011,14 @@ document.addEventListener('DOMContentLoaded', function() {
             selectDate(info.dateStr);
         },
         datesSet: function() {
-            markDatesWithEntries();
+            markDatesWithEntries(); // Re-mark dates when view changes
         },
         contentHeight: 'auto', // Ensure no vertical scrolling
         height: 'auto', // Automatically adjust height to remove scrollbar
     });
     calendar.render();
 
-    // Mark dates with entries on load
+    // Mark dates with entries on initial load
     markDatesWithEntries();
 
     // Event Listeners
@@ -954,9 +1031,148 @@ document.addEventListener('DOMContentLoaded', function() {
             saveEntry();
         }
     });
-});
+}
 
-document.addEventListener('DOMContentLoaded', function() {
+function ensureHistogramElements() {
+    let section = document.getElementById('histogram-section');
+    if (!section) {
+        section = document.createElement('div');
+        section.id = 'histogram-section';
+        section.className = 'mt-3';
+        section.innerHTML = `
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Top Reflection Days</h6>
+                    <div id="histogram-container" class="histogram-container">
+                        <p id="histogram-loading" class="text-muted small">Loading histogram data...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        // Append to a stable parent, e.g. document.querySelector('.container')
+        document.querySelector('.container').appendChild(section);
+    }
+    // Ensure children exist
+    if (!section.querySelector('#histogram-container')) {
+        section.querySelector('.card-body').insertAdjacentHTML('beforeend',
+            `<div id="histogram-container" class="histogram-container">
+                <p id="histogram-loading" class="text-muted small">Loading histogram data...</p>
+            </div>`);
+    }
+    if (!section.querySelector('#histogram-loading')) {
+        section.querySelector('#histogram-container').innerHTML =
+            `<p id="histogram-loading" class="text-muted small">Loading histogram data...</p>`;
+    }
+    return section;
+}
+
+function renderHistogram(data) {
+    const section = ensureHistogramElements();
+    const container = section.querySelector('#histogram-container');
+    const loadingMsg = section.querySelector('#histogram-loading');
+
+    section.style.display = 'block';
+    container.innerHTML = '';
+    if (loadingMsg) loadingMsg.style.display = 'none';
+
+    if (!Array.isArray(data) || data.length === 0) {
+        container.innerHTML = '<p class="text-muted small text-center w-100">No reflection data to display.</p>';
+        return;
+    }
+
+    const maxCount = Math.max(...data.map(item => Number(item.reflections_count) || 0));
+    data.forEach(item => {
+        const count = Number(item.reflections_count) || 0;
+        const barHeight = maxCount > 0 ? (count / maxCount) * 100 : 0;
+        const bar = document.createElement('div');
+        bar.className = 'histogram-bar';
+        bar.style.height = `${barHeight}%`;
+        bar.title = `${item.date}: ${count} reflections`;
+
+        const valueLabel = document.createElement('span');
+        valueLabel.className = 'bar-value';
+        valueLabel.textContent = count;
+
+        const dateLabel = document.createElement('span');
+        dateLabel.className = 'bar-label';
+        dateLabel.textContent = item.date;
+
+        bar.appendChild(valueLabel);
+        bar.appendChild(dateLabel);
+        container.appendChild(bar);
+    });
+}
+
+const TOP_K_RESULTS = 5; // Increase K for a better histogram (adjust as needed)
+
+// Helper function to run and log an initial query execution
+async function runAndLogInitialQuery() {
+    if (!appState.collection) {
+        console.log("Skipping initial query: Collection not initialized.");
+        renderHistogram([]); // Render empty state
+        return;
+    }
+    if (!NILDB.nodes || NILDB.nodes.length === 0) {
+        console.error("Skipping initial query: No nodes configured.");
+        renderHistogram([]); // Render empty state
+        return;
+    }
+
+    // Get the current user's UUID from session storage
+    const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+    const currentUserUuid = authData?.uuid;
+
+    if (!currentUserUuid) {
+        console.error("Skipping initial query: User UUID not found in session storage.");
+        renderHistogram([]); // Render empty state
+        return;
+    }
+
+    const targetNode = NILDB.nodes[0]; // Use the first node
+    const queryPayload = {
+        id: AGGREGATION, // Use the AGGREGATION constant as the query ID
+        variables: {
+             uuid: currentUserUuid // Provide the required uuid variable
+        }
+    };
+
+    console.log(`🚀 Running initial query execution (ID: ${queryPayload.id}, UUID: ${currentUserUuid}) on node: ${targetNode.url}`);
+
+    try {
+        // Call executeQueryOnSingleNode with the correct payload format
+        const result = await appState.collection.executeQueryOnSingleNode(targetNode, queryPayload);
+
+        if (result.error) {
+            console.error(`❌ Initial query execution failed (Node: ${result.node}, Status: ${result.status}):`, result.error);
+            renderHistogram([]); // Render empty state on error
+        } else {
+            console.log(`✅ Initial query execution successful (Node: ${result.node}, Status: ${result.status}). Raw data:`, result.data);
+
+            // Process the results: sort by reflections_count and get top K
+            if (Array.isArray(result.data)) { // Process even if empty
+                const sortedData = [...result.data].sort((a, b) => { // Create copy before sorting
+                    // Ensure both counts are numbers before subtracting
+                    const countA = Number(a.reflections_count) || 0;
+                    const countB = Number(b.reflections_count) || 0;
+                    return countB - countA; // Sort descending
+                });
+                const topK = sortedData.slice(0, TOP_K_RESULTS);
+                console.log(`📊 Top ${TOP_K_RESULTS} reflection counts:`, topK);
+                renderHistogram(topK); // Render histogram with top K data
+            } else {
+                console.log("ℹ️ Data returned from query is not an array.");
+                renderHistogram([]); // Render empty state
+            }
+        }
+    } catch (e) {
+        // Catch any unexpected errors from the call itself
+        console.error(`❌ Unexpected error during initial query execution:`, e);
+        renderHistogram([]); // Render empty state on error
+    }
+}
+
+// Function to initialize authentication logic
+function initializeAuth() {
     // Session storage keys
     const SESSION_UUID_KEY = 'blind_reflections_uuid';
     const SESSION_AUTH_KEY = 'blind_reflections_auth';
@@ -964,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const uuidSpan = document.getElementById('register-uuid');
     const registerTabLink = document.querySelector('a#register-tab');
     const authModal = document.getElementById('authModal');
-    const authModalElement = new bootstrap.Modal(document.getElementById('authModal'));
+    const authModalElement = authModal ? new bootstrap.Modal(authModal) : null; // Initialize if exists
     const signUpLoginButton = document.getElementById('sign-up-login-button');
     const userDisplaySpan = document.getElementById('user-display') || createUserDisplayElement();
 
@@ -1024,9 +1240,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to initialize the collection
     async function initializeCollection(uuid) {
-        collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
-        await collection.init();
-        console.log(`Collection initialized for UUID: ${uuid}`);
+        // Ensure collection is not re-initialized unnecessarily
+        if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
+             console.log(`Collection already initialized for UUID: ${uuid}`);
+             return;
+        }
+        try {
+            // Store the instance in appState
+            appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
+            await appState.collection.init();
+            console.log(`Collection initialized for UUID: ${uuid}`);
+        } catch (error) {
+            console.error("Failed to initialize collection:", error);
+            showWarningModal(`Error initializing connection: ${error.message}`);
+            sessionStorage.removeItem(SESSION_UUID_KEY);
+            sessionStorage.removeItem(SESSION_AUTH_KEY);
+            appState.collection = null;
+            location.reload();
+        }
     }
 
     // Function to display the logged-in user
@@ -1038,7 +1269,8 @@ document.addEventListener('DOMContentLoaded', function() {
             userDisplaySpan.classList.remove('d-none');
 
             // Add a small copy button next to the UUID
-            if (!document.getElementById('header-copy-uuid-btn')) {
+            const existingCopyBtn = document.getElementById('header-copy-uuid-btn');
+            if (!existingCopyBtn) { // Only add if it doesn't exist
                 const copyBtn = document.createElement('button');
                 copyBtn.id = 'header-copy-uuid-btn';
                 copyBtn.className = 'btn btn-sm btn-outline-secondary ms-1';
@@ -1052,11 +1284,13 @@ document.addEventListener('DOMContentLoaded', function() {
                             copyBtn.innerHTML = '<i class="fas fa-check"></i>';
                             copyBtn.classList.add('btn-success');
                             copyBtn.classList.remove('btn-outline-secondary');
+                            copyBtn.disabled = true;
 
                             setTimeout(() => {
                                 copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
                                 copyBtn.classList.remove('btn-success');
                                 copyBtn.classList.add('btn-outline-secondary');
+                                 copyBtn.disabled = false;
                             }, 1200);
                         })
                         .catch(function(err) {
@@ -1065,7 +1299,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 // Insert after the UUID span
-                userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
+                if (userDisplaySpan.parentNode) {
+                    userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
+                }
             }
 
             // Update the sign-up/login button text
@@ -1074,19 +1310,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 signUpLoginButton.removeAttribute('data-bs-toggle');
                 signUpLoginButton.removeAttribute('data-bs-target');
 
-                // Remove existing click handlers
+                // Remove existing click handlers and add logout
                 const newButton = signUpLoginButton.cloneNode(true);
                 signUpLoginButton.parentNode.replaceChild(newButton, signUpLoginButton);
 
                 // Add logout functionality
-                newButton.addEventListener('click', function() {
+                newButton.addEventListener('click', function logoutHandler() {
                     // Remove the copy button when logging out
                     const copyBtn = document.getElementById('header-copy-uuid-btn');
                     if (copyBtn) copyBtn.remove();
 
                     sessionStorage.removeItem(SESSION_UUID_KEY);
                     sessionStorage.removeItem(SESSION_AUTH_KEY);
-                    location.reload(); // Reload to reset the UI
+                    appState.collection = null;
+                    location.reload();
                 });
             }
         }
@@ -1096,11 +1333,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (registerButton) {
         registerButton.addEventListener('click', async function() {
             const uuid = uuidSpan.textContent;
-            const password = document.getElementById('register-password').value;
+            const passwordInput = document.getElementById('register-password');
+            const password = passwordInput.value;
 
-            if (!uuid || !password) {
-                alert('Please provide both UUID and password');
+            if (!uuid || uuid === 'UUID generation failed' || !password) {
+                showWarningModal('Please generate a valid UUID and provide a password');
                 return;
+            }
+
+            // Basic password validation (example)
+            if (password.length < 8) {
+                 showWarningModal('Password must be at least 8 characters long.');
+                 return;
             }
 
             // Save the auth data
@@ -1110,26 +1354,33 @@ document.addEventListener('DOMContentLoaded', function() {
             await initializeCollection(uuid);
 
             // Dynamically get the modal instance and close it
-            const authModalInstance = bootstrap.Modal.getInstance(document.getElementById('authModal'));
+            const authModalInstance = bootstrap.Modal.getInstance(authModal);
             if (authModalInstance) {
                 authModalInstance.hide();
             }
 
             // Display the logged-in user
             displayLoggedInUser(uuid);
+            // Run initial query after registration
+            runAndLogInitialQuery();
         });
     }
 
     // Handle login
     if (loginButton) {
         loginButton.addEventListener('click', async function() {
-            const uuid = document.getElementById('login-username').value;
-            const password = document.getElementById('login-password').value;
+            const uuidInput = document.getElementById('login-username');
+            const passwordInput = document.getElementById('login-password');
+            const uuid = uuidInput.value;
+            const password = passwordInput.value;
 
             if (!uuid || !password) {
-                alert('Please provide both UUID and password');
+                showWarningModal('Please provide both Unique Identifier and password');
                 return;
             }
+
+            // TODO: Add actual authentication logic here if needed
+            // For now, we just save the credentials and initialize
 
             // Save the auth data
             saveAuthData(uuid, password);
@@ -1137,11 +1388,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // Initialize the collection
             await initializeCollection(uuid);
 
-            // Close the modal
-            authModalElement.hide();
-
-            // Display the logged-in user
-            displayLoggedInUser(uuid);
+            // Close the modal if initialization was successful (or handle error)
+             if (appState.collection) {
+                 if (authModalElement) {
+                     authModalElement.hide();
+                 }
+                 // Display the logged-in user
+                 displayLoggedInUser(uuid);
+                 // Run initial query after login
+                 runAndLogInitialQuery();
+             } else {
+                // Error handling is done within initializeCollection
+                // Optionally clear fields or provide specific feedback
+                passwordInput.value = ''; // Clear password field on failed login attempt
+             }
         });
     }
 
@@ -1151,15 +1411,21 @@ document.addEventListener('DOMContentLoaded', function() {
         registerTabLink.addEventListener('shown.bs.tab', setUuid);
     }
 
-    // Set UUID when auth modal is shown
+    // Set UUID when auth modal is shown (if not already set)
     if (authModal && uuidSpan) {
-        authModal.addEventListener('show.bs.modal', setUuid);
+        authModal.addEventListener('show.bs.modal', () => {
+            if (!uuidSpan.textContent || uuidSpan.textContent === 'UUID generation failed') {
+                setUuid();
+            }
+        });
     }
 
-    // Initial UUID generation
-    if (uuidSpan) setUuid();
+    // Initial UUID generation on load if needed
+    if (uuidSpan && (!uuidSpan.textContent || uuidSpan.textContent === 'UUID generation failed')) {
+         setUuid();
+    }
 
-    // Copy to clipboard functionality
+    // Copy to clipboard functionality for registration modal
     const copyBtn = document.getElementById('copy-uuid-btn');
     if (copyBtn && uuidSpan) {
         copyBtn.addEventListener('click', function() {
@@ -1175,20 +1441,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         copyBtn.innerHTML = '<i class="fas fa-check"></i>';
                         copyBtn.classList.add('btn-success');
                         copyBtn.classList.remove('btn-outline-secondary');
+                        copyBtn.disabled = true;
 
                         // Reset after delay
                         setTimeout(() => {
                             copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
                             copyBtn.classList.remove('btn-success');
                             copyBtn.classList.add('btn-outline-secondary');
+                             copyBtn.disabled = false;
                         }, 1200);
                     })
                     .catch(function(err) {
                         console.error('Could not copy text: ', err);
-                        alert('Failed to copy to clipboard');
+                        showWarningModal('Failed to copy to clipboard');
                     });
             } else {
-                alert('No valid UUID to copy');
+                showWarningModal('No valid UUID to copy');
             }
         });
     }
@@ -1196,7 +1464,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check if user is already logged in on page load
     const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
     if (savedUuid) {
-        displayLoggedInUser(savedUuid);
-        initializeCollection(savedUuid);
+        // Wrap in an async IIFE to use await for initialization
+        (async () => {
+            displayLoggedInUser(savedUuid);
+            await initializeCollection(savedUuid); // Ensure collection is initialized
+            // Run initial query on page load if logged in
+            runAndLogInitialQuery();
+        })();
     }
+}
+
+// Single DOMContentLoaded listener to initialize both parts
+document.addEventListener('DOMContentLoaded', function() {
+    initializeReflectionsApp();
+    initializeAuth();
 });

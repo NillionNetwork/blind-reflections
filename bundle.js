@@ -7490,7 +7490,10 @@ if (cid) {
 
   // index.js
   window.Buffer = import_buffer.Buffer;
-  var collection;
+  var appState = {
+    collection: null
+    // Holds the SecretVaultWrapper instance
+  };
   var NILDB = {
     orgCredentials: {
       secretKey: "71c918306c9ca544e824363bdfcca57ff56a1e086020b36dfc70705637c348da",
@@ -7512,6 +7515,7 @@ if (cid) {
     ]
   };
   var SCHEMA = "fa800faa-c7ec-4a09-bf76-6ec768ee6299";
+  var AGGREGATION = "87b54dc5-4229-455f-9d60-2c6cf315a74a";
   var SecretVaultWrapper = class {
     constructor(nodes, credentials, schemaId = null, operation = "store", tokenExpirySeconds = 36e6) {
       this.nodes = nodes;
@@ -7763,9 +7767,59 @@ if (cid) {
       }
       return results;
     }
+    /**
+     * Executes a query on a single node and returns the results.
+     *
+     * @param {object} node - The target node object (should contain 'url' and 'did').
+     * @param {object} queryPayload - The query payload to execute.
+     * @returns {Promise<object>} - A promise resolving to the query response from the node.
+     */
+    async executeQueryOnSingleNode(node, queryPayload) {
+      if (!node || !node.url || !node.did) {
+        console.error("\u274C Invalid node object provided:", node);
+        return { node: node?.url || "unknown", error: "Invalid node object" };
+      }
+      if (!queryPayload) {
+        console.error("\u274C Query payload cannot be empty");
+        return { node: node.url, error: "Query payload cannot be empty" };
+      }
+      try {
+        const jwt = await this.generateNodeToken(node.did);
+        const result = await this.makeRequest(
+          node.url,
+          "queries/execute",
+          // Endpoint for query execution
+          jwt,
+          queryPayload
+        );
+        if (result && result.error) {
+          console.error(`\u274C Query execution failed on ${node.url} with status ${result.status}:`, result.error);
+          return {
+            node: node.url,
+            status: result.status,
+            error: result.error
+          };
+        }
+        return {
+          node: node.url,
+          status: result.status,
+          data: result.data || []
+          // Use the 'data' field from makeRequest result
+        };
+      } catch (error) {
+        console.error(`\u274C Failed to execute query on ${node.url}:`, error.message);
+        return {
+          node: node.url,
+          status: error.status || null,
+          // Include status if available on error object
+          error: error.message || "An unknown error occurred"
+        };
+      }
+    }
   };
-  document.addEventListener("DOMContentLoaded", function() {
+  function initializeReflectionsApp() {
     let currentSelectedDate = null;
+    let calendar;
     const STORAGE_KEY = "blind_reflections_data";
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     const tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
@@ -7836,19 +7890,19 @@ if (cid) {
       const uuid = authData?.uuid;
       if (!uuid) {
         const authModal = new bootstrap.Modal(document.getElementById("authModal"));
-        showWarningModal("You must be logged in to save a memory.");
-        authModal.show();
+        showWarningModal2("You must be logged in to save a memory.");
+        if (authModal) authModal.show();
         return;
       }
       const entryTextArea = document.getElementById("entry-text");
       const entryText = entryTextArea.value.trim();
       if (!entryText) {
-        showWarningModal("Please enter some text for your reflection.");
+        showWarningModal2("Please enter some text for your reflection.");
         return;
       }
       const MAX_CHARS = 25e3;
       if (entryText.length > MAX_CHARS) {
-        showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
+        showWarningModal2(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
         return;
       }
       const message_for_nildb = {
@@ -7858,7 +7912,10 @@ if (cid) {
       };
       showLoadingAnimation("Saving your memory...");
       try {
-        const dataWritten = await collection.writeToNodes([message_for_nildb]);
+        if (!appState.collection) {
+          throw new Error("Collection not initialized. Please log in.");
+        }
+        const dataWritten = await appState.collection.writeToNodes([message_for_nildb]);
         console.log("Data written to nilDB:", dataWritten);
         const recordId = dataWritten[0]?.data?.created?.[0];
         const data = loadData();
@@ -7870,13 +7927,15 @@ if (cid) {
         saveData(data);
         entryTextArea.value = "";
         displayEntries(data[currentSelectedDate]);
-        markDateWithEntries(currentSelectedDate);
+        markDateWithEntriesHelper(currentSelectedDate);
         const entriesList = document.getElementById("entries-list");
         if (entriesList) {
           entriesList.scrollTop = 0;
         }
+        runAndLogInitialQuery();
       } catch (error) {
         console.error("Failed to write data to nilDB:", error);
+        showWarningModal2(`Failed to save memory: ${error.message}`);
       } finally {
         hideLoadingAnimation();
       }
@@ -7884,8 +7943,15 @@ if (cid) {
     function markDatesWithEntries() {
       const data = loadData();
       Object.keys(data).forEach((dateStr) => {
-        markDateWithEntries(dateStr);
+        markDateWithEntriesHelper(dateStr);
       });
+    }
+    function markDateWithEntriesHelper(dateStr) {
+      if (!calendar) return;
+      const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
+      if (dateEl) {
+        dateEl.classList.add("fc-day-has-entries");
+      }
     }
     function formatDisplayDate(dateStr) {
       const [year, month, day] = dateStr.split("-").map(Number);
@@ -7898,6 +7964,7 @@ if (cid) {
       });
     }
     async function selectDate(dateStr) {
+      if (!calendar) return;
       if (currentSelectedDate) {
         const prevEl = calendar.el.querySelector(`.fc-day[data-date="${currentSelectedDate}"]`);
         if (prevEl) prevEl.classList.remove("fc-day-selected");
@@ -7913,10 +7980,13 @@ if (cid) {
         const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
         const uuid = authData?.uuid;
         if (!uuid) {
-          console.error("No UUID found. User must be logged in.");
+          showWarningModal2("You must be logged in to view memories.");
           return;
         }
-        const dataReadFromNilDB = await collection.readFromNodes({ uuid, date: dateStr });
+        if (!appState.collection) {
+          throw new Error("Collection not initialized. Please log in.");
+        }
+        const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
         console.log("Data read from nilDB:", dataReadFromNilDB);
         const entries = dataReadFromNilDB.flatMap((nodeArray) => {
           if (Array.isArray(nodeArray)) {
@@ -7935,6 +8005,7 @@ if (cid) {
         displayEntries(data[dateStr]);
       } catch (error) {
         console.error("Failed to read data from nilDB:", error);
+        showWarningModal2(`Failed to fetch memories: ${error.message}`);
       } finally {
         hideLoadingAnimation();
       }
@@ -7955,6 +8026,7 @@ if (cid) {
         const entryCard = document.createElement("div");
         entryCard.className = "card entry-card mb-3";
         entryCard.style.cursor = "pointer";
+        entryCard.setAttribute("data-entry-id", entry.id);
         const timestamp = new Date(entry.timestamp);
         const formattedTime = timestamp.toLocaleTimeString("en-US", {
           hour: "2-digit",
@@ -7976,13 +8048,10 @@ if (cid) {
         entryCard.addEventListener("click", () => {
           const memoryText = entry.text;
           const memoryDate = currentSelectedDate;
-          const memoryItem = document.createElement("li");
-          memoryItem.className = "memory-item";
-          memoryItem.innerHTML = `
-                    <span class="memory-date">${memoryDate}</span>
-                    <span class="memory-text">${memoryText}</span>
-                `;
-          memoryQueue.push(memoryItem);
+          const alreadyExists = memoryQueue.some((item) => item.id === entry.id);
+          if (alreadyExists) return;
+          const memoryData = { id: entry.id, date: memoryDate, text: memoryText };
+          memoryQueue.push(memoryData);
           if (memoryQueue.length > 5) {
             memoryQueue.shift();
           }
@@ -7999,13 +8068,13 @@ if (cid) {
         return;
       }
       memoryDisplayBox.style.display = "block";
-      memoryQueue.forEach((item) => {
+      memoryQueue.forEach((itemData) => {
         const memoryCard = document.createElement("div");
         memoryCard.className = "card memory-card mb-2";
         memoryCard.innerHTML = `
                 <div class="card-body d-flex align-items-start">
-                    <span class="memory-date me-3">${item.querySelector(".memory-date").textContent}</span>
-                    <p class="card-text entry-text memory-text mb-0">${item.querySelector(".memory-text").textContent}</p>
+                    <span class="memory-date me-3">${itemData.date}</span>
+                    <p class="card-text entry-text memory-text mb-0">${itemData.text}</p>
                 </div>
             `;
         memoryDisplayBox.appendChild(memoryCard);
@@ -8014,16 +8083,15 @@ if (cid) {
     document.getElementById("ask-secret-llm-btn").addEventListener("click", async () => {
       const privateReflectionInput = document.getElementById("private-reflection-input");
       if (!privateReflectionInput.value.trim() && memoryQueue.length === 0) {
-        showWarningModal("Please provide a prompt and select at least one memory.");
+        showWarningModal2("Please provide a prompt and select at least one memory.");
         return;
       } else if (!privateReflectionInput.value.trim()) {
-        showWarningModal("Please provide a prompt.");
+        showWarningModal2("Please provide a prompt.");
         return;
       } else if (memoryQueue.length === 0) {
-        showWarningModal("Please select at least one memory.");
+        showWarningModal2("Please select at least one memory.");
         return;
       }
-      const memoryDisplayBox = document.getElementById("memory-display-box");
       const messages = [];
       if (privateReflectionInput.value.trim()) {
         messages.push({
@@ -8033,13 +8101,12 @@ if (cid) {
       }
       if (memoryQueue.length > 0) {
         const memoryContext = memoryQueue.map((item) => {
-          const date = item.querySelector(".memory-date").textContent;
-          const text = item.querySelector(".memory-text").textContent;
-          return `Memory from ${date}: ${text}`;
-        }).join("\n");
+          return `Memory from ${item.date}: ${item.text}`;
+        }).join("\n\n");
         messages.push({
           role: "system",
-          content: memoryContext
+          content: `Context based on selected memories:
+${memoryContext}`
         });
       } else {
         console.warn("No memories selected.");
@@ -8051,12 +8118,14 @@ if (cid) {
       console.log("Messages for API:", messages);
       const raw = JSON.stringify({
         model: "meta-llama/Llama-3.1-8B-Instruct",
+        // TODO: Move to config
         messages,
         temperature: 0.2,
         top_p: 0.95,
         max_tokens: 2048,
         stream: false,
         nilrag: {}
+        // TODO: Understand what this does or remove if unnecessary
       });
       const requestOptions = {
         method: "POST",
@@ -8068,14 +8137,19 @@ if (cid) {
       try {
         const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
         if (!response.ok) {
-          throw new Error("Failed to fetch response from the API");
+          const errorText = await response.text();
+          throw new Error(`API Error (${response.status}): ${errorText}`);
         }
         const result = await response.json();
         console.log("API Response:", result);
-        showLLMResponseModal(result.choices[0].message.content);
+        if (result.choices && result.choices[0] && result.choices[0].message) {
+          showLLMResponseModal(result.choices[0].message.content);
+        } else {
+          throw new Error("Invalid response structure from API");
+        }
       } catch (error) {
         console.error("Error calling the API:", error);
-        alert("Failed to process your request. Please try again later.");
+        showWarningModal2(`Failed to process request: ${error.message}`);
       } finally {
         hideLoadingAnimation();
       }
@@ -8085,106 +8159,88 @@ if (cid) {
       renderMemoryDisplayBox();
     });
     function showLLMResponseModal(responseContent) {
-      const modalHTML = `
-            <div class="modal fade" id="llmResponseModal" tabindex="-1" aria-labelledby="llmResponseModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
-                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
-                            <h5 class="modal-title" id="llmResponseModalLabel" style="color: var(--teal-color);">Blind Reflections</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p style="white-space: pre-wrap; font-family: var(--font-family);">${responseContent}</p>
-                        </div>
-                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
-                            <button id="copy-response-btn" class="btn btn-outline-accent">Copy Response</button>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-      document.body.insertAdjacentHTML("beforeend", modalHTML);
-      const modalElement = new bootstrap.Modal(document.getElementById("llmResponseModal"));
-      modalElement.show();
-      document.getElementById("copy-response-btn").addEventListener("click", () => {
+      const template = document.getElementById("llm-response-modal-template");
+      if (!template) {
+        console.error("LLM response modal template not found!");
+        alert("Error displaying response.");
+        return;
+      }
+      const clone = template.content.cloneNode(true);
+      const modalElement = clone.querySelector(".modal");
+      const responseContentElement = clone.querySelector(".response-content");
+      const copyButton = clone.querySelector(".copy-response-btn");
+      if (!modalElement || !responseContentElement || !copyButton) {
+        console.error("Essential elements missing in LLM response modal template!");
+        return;
+      }
+      responseContentElement.textContent = responseContent;
+      document.body.appendChild(modalElement);
+      const modalInstance = new bootstrap.Modal(modalElement);
+      modalInstance.show();
+      copyButton.addEventListener("click", () => {
         navigator.clipboard.writeText(responseContent).then(() => {
-          const copyButton = document.getElementById("copy-response-btn");
           copyButton.textContent = "Copied!";
+          copyButton.disabled = true;
           setTimeout(() => {
             copyButton.textContent = "Copy Response";
+            copyButton.disabled = false;
           }, 1500);
         }).catch((err) => {
           console.error("Failed to copy text:", err);
         });
       });
-      document.getElementById("llmResponseModal").addEventListener("hidden.bs.modal", () => {
-        document.getElementById("llmResponseModal").remove();
+      modalElement.addEventListener("hidden.bs.modal", () => {
+        modalElement.remove();
       });
     }
-    function showWarningModal(message) {
-      const modalHTML = `
-            <div class="modal fade" id="warningModal" tabindex="-1" aria-labelledby="warningModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content" style="background-color: var(--card-bg); color: var(--text-color);">
-                        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
-                            <h5 class="modal-title" id="warningModalLabel" style="color: #FF6F61;">Warning</h5> <!-- Pastel red -->
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p style="font-weight: font-family: var(--font-family);">${message}</p> <!-- Text matches theme -->
-                        </div>
-                        <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-      document.body.insertAdjacentHTML("beforeend", modalHTML);
-      const modalElement = new bootstrap.Modal(document.getElementById("warningModal"));
-      modalElement.show();
-      document.getElementById("warningModal").addEventListener("hidden.bs.modal", () => {
-        document.getElementById("warningModal").remove();
-      });
-    }
-    function markDateWithEntries(dateStr) {
-      const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
-      if (dateEl) {
-        dateEl.classList.add("fc-day-has-entries");
+    function showWarningModal2(message) {
+      const template = document.getElementById("warning-modal-template");
+      if (!template) {
+        console.error("Warning modal template not found!");
+        alert(message);
+        return;
       }
+      const clone = template.content.cloneNode(true);
+      const modalElement = clone.querySelector(".modal");
+      const messageElement = clone.querySelector(".warning-message");
+      if (!modalElement || !messageElement) {
+        console.error("Essential elements missing in warning modal template!");
+        return;
+      }
+      messageElement.textContent = message;
+      document.body.appendChild(modalElement);
+      const modalInstance = new bootstrap.Modal(modalElement);
+      modalInstance.show();
+      modalElement.addEventListener("hidden.bs.modal", () => {
+        modalElement.remove();
+      });
     }
     function showLoadingAnimation(message = "Loading...") {
-      const loaderHTML = `
-            <div id="custom-loader-overlay"
-                style="
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0,0,0,0.4);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 1055;
-                ">
-                <div class="text-center bg-dark p-3 rounded shadow">
-                    <img src="./nillion-loading.gif" alt="Loading" style="width: 50px; height: 50px;">
-                    <p class="mt-2 text-light" style="font-size: 0.85rem;">${message}</p>
-                </div>
-            </div>
-        `;
-      document.body.insertAdjacentHTML("beforeend", loaderHTML);
+      hideLoadingAnimation();
+      const template = document.getElementById("loading-animation-template");
+      if (!template) {
+        console.error("Loading animation template not found!");
+        return;
+      }
+      const clone = template.content.cloneNode(true);
+      const loaderElement = clone.querySelector(".custom-loader-overlay");
+      const messageElement = clone.querySelector(".loading-message");
+      if (!loaderElement || !messageElement) {
+        console.error("Essential elements missing in loading template!");
+        return;
+      }
+      messageElement.textContent = message;
+      loaderElement.id = "active-loader-overlay";
+      document.body.appendChild(loaderElement);
     }
     function hideLoadingAnimation() {
-      const loaderOverlay = document.getElementById("custom-loader-overlay");
+      const loaderOverlay = document.getElementById("active-loader-overlay");
       if (loaderOverlay) {
         loaderOverlay.remove();
       }
     }
     const calendarEl = document.getElementById("calendar");
-    const calendar = new FullCalendar.Calendar(calendarEl, {
+    calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: "dayGridMonth",
       headerToolbar: {
         left: "prev,next today",
@@ -8213,14 +8269,131 @@ if (cid) {
         saveEntry();
       }
     });
-  });
-  document.addEventListener("DOMContentLoaded", function() {
+  }
+  function ensureHistogramElements() {
+    let section = document.getElementById("histogram-section");
+    if (!section) {
+      section = document.createElement("div");
+      section.id = "histogram-section";
+      section.className = "mt-3";
+      section.innerHTML = `
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Top Reflection Days</h6>
+                    <div id="histogram-container" class="histogram-container">
+                        <p id="histogram-loading" class="text-muted small">Loading histogram data...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+      document.querySelector(".container").appendChild(section);
+    }
+    if (!section.querySelector("#histogram-container")) {
+      section.querySelector(".card-body").insertAdjacentHTML(
+        "beforeend",
+        `<div id="histogram-container" class="histogram-container">
+                <p id="histogram-loading" class="text-muted small">Loading histogram data...</p>
+            </div>`
+      );
+    }
+    if (!section.querySelector("#histogram-loading")) {
+      section.querySelector("#histogram-container").innerHTML = `<p id="histogram-loading" class="text-muted small">Loading histogram data...</p>`;
+    }
+    return section;
+  }
+  function renderHistogram(data) {
+    console.log("Rendering histogram with data:", data);
+    const section = ensureHistogramElements();
+    const container = section.querySelector("#histogram-container");
+    const loadingMsg = section.querySelector("#histogram-loading");
+    section.style.display = "block";
+    container.innerHTML = "";
+    if (loadingMsg) loadingMsg.style.display = "none";
+    if (!Array.isArray(data) || data.length === 0) {
+      container.innerHTML = '<p class="text-muted small text-center w-100">No reflection data to display.</p>';
+      return;
+    }
+    const maxCount = Math.max(...data.map((item) => Number(item.reflections_count) || 0));
+    data.forEach((item) => {
+      const count = Number(item.reflections_count) || 0;
+      const barHeight = maxCount > 0 ? count / maxCount * 100 : 0;
+      const bar = document.createElement("div");
+      bar.className = "histogram-bar";
+      bar.style.height = `${barHeight}%`;
+      bar.title = `${item.date}: ${count} reflections`;
+      const valueLabel = document.createElement("span");
+      valueLabel.className = "bar-value";
+      valueLabel.textContent = count;
+      const dateLabel = document.createElement("span");
+      dateLabel.className = "bar-label";
+      dateLabel.textContent = item.date;
+      bar.appendChild(valueLabel);
+      bar.appendChild(dateLabel);
+      container.appendChild(bar);
+    });
+  }
+  var TOP_K_RESULTS = 5;
+  async function runAndLogInitialQuery() {
+    if (!appState.collection) {
+      console.log("Skipping initial query: Collection not initialized.");
+      renderHistogram([]);
+      return;
+    }
+    if (!NILDB.nodes || NILDB.nodes.length === 0) {
+      console.error("Skipping initial query: No nodes configured.");
+      renderHistogram([]);
+      return;
+    }
+    const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+    const currentUserUuid = authData?.uuid;
+    if (!currentUserUuid) {
+      console.error("Skipping initial query: User UUID not found in session storage.");
+      renderHistogram([]);
+      return;
+    }
+    const targetNode = NILDB.nodes[0];
+    const queryPayload = {
+      id: AGGREGATION,
+      // Use the AGGREGATION constant as the query ID
+      variables: {
+        uuid: currentUserUuid
+        // Provide the required uuid variable
+      }
+    };
+    console.log(`\u{1F680} Running initial query execution (ID: ${queryPayload.id}, UUID: ${currentUserUuid}) on node: ${targetNode.url}`);
+    try {
+      const result = await appState.collection.executeQueryOnSingleNode(targetNode, queryPayload);
+      if (result.error) {
+        console.error(`\u274C Initial query execution failed (Node: ${result.node}, Status: ${result.status}):`, result.error);
+        renderHistogram([]);
+      } else {
+        console.log(`\u2705 Initial query execution successful (Node: ${result.node}, Status: ${result.status}). Raw data:`, result.data);
+        if (Array.isArray(result.data)) {
+          const sortedData = [...result.data].sort((a, b) => {
+            const countA = Number(a.reflections_count) || 0;
+            const countB = Number(b.reflections_count) || 0;
+            return countB - countA;
+          });
+          const topK = sortedData.slice(0, TOP_K_RESULTS);
+          console.log(`\u{1F4CA} Top ${TOP_K_RESULTS} reflection counts:`, topK);
+          renderHistogram(topK);
+        } else {
+          console.log("\u2139\uFE0F Data returned from query is not an array.");
+          renderHistogram([]);
+        }
+      }
+    } catch (e) {
+      console.error(`\u274C Unexpected error during initial query execution:`, e);
+      renderHistogram([]);
+    }
+  }
+  function initializeAuth() {
     const SESSION_UUID_KEY = "blind_reflections_uuid";
     const SESSION_AUTH_KEY = "blind_reflections_auth";
     const uuidSpan = document.getElementById("register-uuid");
     const registerTabLink = document.querySelector("a#register-tab");
     const authModal = document.getElementById("authModal");
-    const authModalElement = new bootstrap.Modal(document.getElementById("authModal"));
+    const authModalElement = authModal ? new bootstrap.Modal(authModal) : null;
     const signUpLoginButton = document.getElementById("sign-up-login-button");
     const userDisplaySpan = document.getElementById("user-display") || createUserDisplayElement();
     const registerButton = document.getElementById("register-button");
@@ -8263,16 +8436,30 @@ if (cid) {
       sessionStorage.setItem(SESSION_AUTH_KEY, JSON.stringify(authData));
     }
     async function initializeCollection(uuid) {
-      collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
-      await collection.init();
-      console.log(`Collection initialized for UUID: ${uuid}`);
+      if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
+        console.log(`Collection already initialized for UUID: ${uuid}`);
+        return;
+      }
+      try {
+        appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
+        await appState.collection.init();
+        console.log(`Collection initialized for UUID: ${uuid}`);
+      } catch (error) {
+        console.error("Failed to initialize collection:", error);
+        showWarningModal(`Error initializing connection: ${error.message}`);
+        sessionStorage.removeItem(SESSION_UUID_KEY);
+        sessionStorage.removeItem(SESSION_AUTH_KEY);
+        appState.collection = null;
+        location.reload();
+      }
     }
     function displayLoggedInUser(uuid) {
       if (userDisplaySpan && uuid) {
         userDisplaySpan.textContent = uuid;
         userDisplaySpan.title = `Your unique identifier`;
         userDisplaySpan.classList.remove("d-none");
-        if (!document.getElementById("header-copy-uuid-btn")) {
+        const existingCopyBtn = document.getElementById("header-copy-uuid-btn");
+        if (!existingCopyBtn) {
           const copyBtn2 = document.createElement("button");
           copyBtn2.id = "header-copy-uuid-btn";
           copyBtn2.className = "btn btn-sm btn-outline-secondary ms-1";
@@ -8283,16 +8470,20 @@ if (cid) {
               copyBtn2.innerHTML = '<i class="fas fa-check"></i>';
               copyBtn2.classList.add("btn-success");
               copyBtn2.classList.remove("btn-outline-secondary");
+              copyBtn2.disabled = true;
               setTimeout(() => {
                 copyBtn2.innerHTML = '<i class="fas fa-copy"></i>';
                 copyBtn2.classList.remove("btn-success");
                 copyBtn2.classList.add("btn-outline-secondary");
+                copyBtn2.disabled = false;
               }, 1200);
             }).catch(function(err) {
               console.error("Could not copy text: ", err);
             });
           });
-          userDisplaySpan.parentNode.insertBefore(copyBtn2, userDisplaySpan.nextSibling);
+          if (userDisplaySpan.parentNode) {
+            userDisplaySpan.parentNode.insertBefore(copyBtn2, userDisplaySpan.nextSibling);
+          }
         }
         if (signUpLoginButton) {
           signUpLoginButton.textContent = "Logout";
@@ -8300,11 +8491,12 @@ if (cid) {
           signUpLoginButton.removeAttribute("data-bs-target");
           const newButton = signUpLoginButton.cloneNode(true);
           signUpLoginButton.parentNode.replaceChild(newButton, signUpLoginButton);
-          newButton.addEventListener("click", function() {
+          newButton.addEventListener("click", function logoutHandler() {
             const copyBtn2 = document.getElementById("header-copy-uuid-btn");
             if (copyBtn2) copyBtn2.remove();
             sessionStorage.removeItem(SESSION_UUID_KEY);
             sessionStorage.removeItem(SESSION_AUTH_KEY);
+            appState.collection = null;
             location.reload();
           });
         }
@@ -8313,41 +8505,62 @@ if (cid) {
     if (registerButton) {
       registerButton.addEventListener("click", async function() {
         const uuid = uuidSpan.textContent;
-        const password = document.getElementById("register-password").value;
-        if (!uuid || !password) {
-          alert("Please provide both UUID and password");
+        const passwordInput = document.getElementById("register-password");
+        const password = passwordInput.value;
+        if (!uuid || uuid === "UUID generation failed" || !password) {
+          showWarningModal("Please generate a valid UUID and provide a password");
+          return;
+        }
+        if (password.length < 8) {
+          showWarningModal("Password must be at least 8 characters long.");
           return;
         }
         saveAuthData(uuid, password);
         await initializeCollection(uuid);
-        const authModalInstance = bootstrap.Modal.getInstance(document.getElementById("authModal"));
+        const authModalInstance = bootstrap.Modal.getInstance(authModal);
         if (authModalInstance) {
           authModalInstance.hide();
         }
         displayLoggedInUser(uuid);
+        runAndLogInitialQuery();
       });
     }
     if (loginButton) {
       loginButton.addEventListener("click", async function() {
-        const uuid = document.getElementById("login-username").value;
-        const password = document.getElementById("login-password").value;
+        const uuidInput = document.getElementById("login-username");
+        const passwordInput = document.getElementById("login-password");
+        const uuid = uuidInput.value;
+        const password = passwordInput.value;
         if (!uuid || !password) {
-          alert("Please provide both UUID and password");
+          showWarningModal("Please provide both Unique Identifier and password");
           return;
         }
         saveAuthData(uuid, password);
         await initializeCollection(uuid);
-        authModalElement.hide();
-        displayLoggedInUser(uuid);
+        if (appState.collection) {
+          if (authModalElement) {
+            authModalElement.hide();
+          }
+          displayLoggedInUser(uuid);
+          runAndLogInitialQuery();
+        } else {
+          passwordInput.value = "";
+        }
       });
     }
     if (registerTabLink && uuidSpan) {
       registerTabLink.addEventListener("shown.bs.tab", setUuid);
     }
     if (authModal && uuidSpan) {
-      authModal.addEventListener("show.bs.modal", setUuid);
+      authModal.addEventListener("show.bs.modal", () => {
+        if (!uuidSpan.textContent || uuidSpan.textContent === "UUID generation failed") {
+          setUuid();
+        }
+      });
     }
-    if (uuidSpan) setUuid();
+    if (uuidSpan && (!uuidSpan.textContent || uuidSpan.textContent === "UUID generation failed")) {
+      setUuid();
+    }
     const copyBtn = document.getElementById("copy-uuid-btn");
     if (copyBtn && uuidSpan) {
       copyBtn.addEventListener("click", function() {
@@ -8357,25 +8570,34 @@ if (cid) {
             copyBtn.innerHTML = '<i class="fas fa-check"></i>';
             copyBtn.classList.add("btn-success");
             copyBtn.classList.remove("btn-outline-secondary");
+            copyBtn.disabled = true;
             setTimeout(() => {
               copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
               copyBtn.classList.remove("btn-success");
               copyBtn.classList.add("btn-outline-secondary");
+              copyBtn.disabled = false;
             }, 1200);
           }).catch(function(err) {
             console.error("Could not copy text: ", err);
-            alert("Failed to copy to clipboard");
+            showWarningModal("Failed to copy to clipboard");
           });
         } else {
-          alert("No valid UUID to copy");
+          showWarningModal("No valid UUID to copy");
         }
       });
     }
     const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
     if (savedUuid) {
-      displayLoggedInUser(savedUuid);
-      initializeCollection(savedUuid);
+      (async () => {
+        displayLoggedInUser(savedUuid);
+        await initializeCollection(savedUuid);
+        runAndLogInitialQuery();
+      })();
     }
+  }
+  document.addEventListener("DOMContentLoaded", function() {
+    initializeReflectionsApp();
+    initializeAuth();
   });
 })();
 /*! Bundled license information:

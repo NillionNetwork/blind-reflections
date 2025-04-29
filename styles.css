@@ -562,3 +562,57 @@ header {
     color: var(--text-color);
     background-color: var(--bg-color);
 }
+
+/* Histogram Styles */
+.histogram-container {
+    display: flex;
+    align-items: flex-end; /* Align bars at the bottom */
+    justify-content: space-around; /* Distribute bars evenly */
+    height: 100px; /* Adjust height as needed */
+    border-left: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: 10px 10px 0 10px; /* Padding top/right/bottom/left */
+    position: relative;
+    margin-top: 10px;
+}
+
+.histogram-bar {
+    flex: 1; /* Allow bars to take up space */
+    max-width: 50px; /* Max width for each bar */
+    background-color: var(--accent-color);
+    margin: 0 5px; /* Spacing between bars */
+    text-align: center;
+    position: relative;
+    transition: height 0.5s ease-out, background-color 0.3s;
+    cursor: default; /* Default cursor */
+}
+
+.histogram-bar:hover {
+    background-color: var(--teal-light); /* Lighter teal on hover */
+}
+
+.histogram-bar .bar-label {
+    position: absolute;
+    bottom: -20px; /* Position label below the bar */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    color: var(--text-color);
+}
+
+.histogram-bar .bar-value {
+    position: absolute;
+    top: -20px; /* Position value above the bar */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--text-color);
+}
+
+#histogram-loading {
+    width: 100%;
+    text-align: center;
+    padding: 20px;
+}
