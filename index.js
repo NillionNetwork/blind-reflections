@@ -22,6 +22,7 @@ async function sha256(message) {
 // Application state container
 const appState = {
     collection: null, // Holds the SecretVaultWrapper instance
+    collection_sum: null, // Holds the SecretVaultWrapper instance
 };
 
 /* Organization configuration for nilDB. */
@@ -159,65 +160,6 @@ export class NilQLWrapper {
     const decryptedData = await nilql.decrypt(this.secretKey, shares);
     return decryptedData;
   }
-
-  /**
-   * Recursively encrypts all values marked with %allot in the given data object
-   * and prepares it for secure processing.
-   *
-   * - Traverses the entire object structure, handling nested objects at any depth.
-   * - Encrypts values associated with the %allot key using nilql.encrypt().
-   * - Preserves non-%allot values and maintains the original object structure.
-   * - Calls nilql.allot() on the fully processed data before returning.
-   *
-   * @param {object} data - The input object containing fields marked with %allot for encryption.
-   * @throws {Error} If NilQLWrapper has not been initialized with a secret key.
-   * @returns {Promise<object>} The processed object with encrypted %allot values.
-   */
-  async prepareAndAllot(data) {
-    if (!this.secretKey) {
-      throw new Error("NilQLWrapper not initialized. Call init() first.");
-    }
-
-    const encryptDeep = async (obj) => {
-      if (typeof obj !== "object" || obj === null) {
-        return obj;
-      }
-
-      const encrypted = Array.isArray(obj) ? [] : {};
-
-      for (const [key, value] of Object.entries(obj)) {
-        if (typeof value === "object" && value !== null) {
-          if ("%allot" in value) {
-            encrypted[key] = {
-              "%allot": await nilql.encrypt(this.secretKey, value["%allot"]),
-            };
-          } else {
-            encrypted[key] = await encryptDeep(value); // Recurse into nested objects
-          }
-        } else {
-          encrypted[key] = value;
-        }
-      }
-      return encrypted;
-    };
-
-    const encryptedData = await encryptDeep(data);
-    return nilql.allot(encryptedData);
-  }
-
-  /**
-   * Recombines encrypted shares back into original data structure
-   * @param {Array} shares - Array of shares from prepareAndAllot
-   * @throws {Error} If NilQLWrapper hasn't been initialized
-   * @returns {Promise<object>} Original data structure with decrypted values
-   */
-  async unify(shares) {
-    if (!this.secretKey) {
-      throw new Error("NilQLWrapper not initialized. Call init() first.");
-    }
-    const unifiedResult = await nilql.unify(this.secretKey, shares);
-    return unifiedResult;
-  }
 }
 
 class SecretVaultWrapper {
@@ -343,13 +285,35 @@ class SecretVaultWrapper {
      * @param {array} fieldsToEncrypt - Fields to encrypt
      * @returns {Promise<array>} Array of transformed data for each node
      */
-    async allotData(data) {
-      const encryptedRecords = [];
+    async encryptData(data, update = false) {
+      // This assumes data is an array of message objects (usually length 1)
+      const allNodeRecords = [];
       for (const item of data) {
-        const encryptedItem = await this.nilqlWrapper.prepareAndAllot(item);
-        encryptedRecords.push(encryptedItem);
+        // Only generate a UUID for this record if not present and not updating
+        const recordId = (!update && !item._id) ? uuidv4() : item._id;
+        // Encrypt the entry field directly (assume it's a string)
+        const shares = await this.nilqlWrapper.encrypt(item.entry);
+        // For each node, create a message with the same _id and all other fields identical except entry
+        for (let i = 0; i < this.nodes.length; i++) {
+          let nodeMessage;
+          if (update) {
+            // For update, do not set or overwrite _id, just use the item as is
+            nodeMessage = {
+              ...item,
+              entry: { "%share": shares[i] },
+            };
+          } else {
+            // For create, ensure _id is set
+            nodeMessage = {
+              ...item,
+              _id: recordId,
+              entry: { "%share": shares[i] },
+            };
+          }
+          allNodeRecords.push(nodeMessage);
+        }
       }
-      return encryptedRecords;
+      return allNodeRecords;
     }
 
     async flushData() {
@@ -376,20 +340,19 @@ class SecretVaultWrapper {
         }
         return record;
       });
-      const transformedData = await this.allotData(idData);
+      const transformedData = await this.encryptData(idData);
+      console.log('[writeToNodes] transformedData:', transformedData);
+
 
       const writeDataToNode = async (node, index) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
-          const nodeData = transformedData.map((encryptedShares) =>
-            encryptedShares.length !== this.nodes.length
-              ? encryptedShares[0]
-              : encryptedShares[index],
-          );
+          const nodeData = [transformedData[index]];
           const payload = {
             schema: this.schemaId,
             data: nodeData,
           };
+          console.log('[writeToNodes] payload:', payload);
 
           const result = await this.makeRequest(
             node.url,
@@ -464,30 +427,41 @@ class SecretVaultWrapper {
         }
       });
 
-      // Group records across nodes by _id
-      const recordGroups = results.reduce((acc, nodeResult) => {
+      // Group records across nodes by _id and collect all shares
+      const recordSharesMap = new Map();
+      for (const nodeResult of results) {
         if (nodeResult.data) {
           for (const record of nodeResult.data) {
-            const existingGroup = acc.find((group) =>
-              group.shares.some((share) => share._id === record._id),
-            );
-            if (existingGroup) {
-              existingGroup.shares.push(record);
-            } else {
-              acc.push({ shares: [record], recordIndex: record._id });
+            if (!record._id) continue;
+            if (!recordSharesMap.has(record._id)) {
+              recordSharesMap.set(record._id, []);
             }
+            recordSharesMap.get(record._id).push(record.entry && record.entry["%share"]);
           }
         }
-        return acc;
-      }, []);
-
-      const recombinedRecords = await Promise.all(
-        recordGroups.map(async (record) => {
-          const recombined = await this.nilqlWrapper.unify(record.shares);
-          return recombined;
-        }),
-      );
-      return recombinedRecords;
+      }
+      // For each record, decrypt the entry from shares and merge other fields from the first occurrence
+      const mergedRecords = [];
+      for (const nodeResult of results) {
+        if (nodeResult.data) {
+          for (const record of nodeResult.data) {
+            if (!record._id) continue;
+            if (mergedRecords.some(r => r._id === record._id)) continue; // Already processed
+            const shares = recordSharesMap.get(record._id).filter(Boolean);
+            let decryptedEntry = null;
+            if (shares.length > 0) {
+              decryptedEntry = await this.nilqlWrapper.decrypt(shares);
+            }
+            mergedRecords.push({
+              ...record,
+              entry: decryptedEntry,
+            });
+          }
+        }
+      }
+      // Remove duplicates (keep only one per _id)
+      const uniqueRecords = Array.from(new Map(mergedRecords.map(r => [r._id, r])).values());
+      return uniqueRecords;
     }
 
     /**
@@ -497,16 +471,13 @@ class SecretVaultWrapper {
      * @returns {Promise<array>} Array of update results from each node
      */
     async updateDataToNodes(recordUpdate, filter = {}) {
-      const transformedData = await this.allotData([recordUpdate]);
+      const transformedData = await this.encryptData([recordUpdate], true);
 
+      console.log('[updateDataToNodes] transformedData:', transformedData);
       const updateDataOnNode = async (node, index) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
-          const [nodeData] = transformedData.map((encryptedShares) =>
-            encryptedShares.length !== this.nodes.length
-              ? encryptedShares[0]
-              : encryptedShares[index],
-          );
+          const nodeData = transformedData[index];
           const payload = {
             schema: this.schemaId,
             update: {
@@ -854,7 +825,7 @@ function initializeReflectionsApp() {
         const message_for_nildb = {
             uuid: uuid,
             date: currentSelectedDate,
-            entry: { "%allot": entryText },
+            entry: entryText,
             tags: tagsArray
         };
 
@@ -1018,11 +989,13 @@ function initializeReflectionsApp() {
             showWarningModal(`Failed to fetch memories for date: ${error.message}`);
             displayEntries(null);
 
-            // If we fail to fetch memories for date, log the user out
-            sessionStorage.removeItem('blind_reflections_uuid');
-            sessionStorage.removeItem('blind_reflections_auth');
-            appState.collection = null;
-            setTimeout(() => { location.reload(); }, 1000); // Give user a moment to see the warning
+            // Only log out if error is authentication-related (401/403)
+            if (error && (error.status === 401 || error.status === 403 || (error.message && (error.message.includes('401') || error.message.includes('403'))))) {
+                sessionStorage.removeItem('blind_reflections_uuid');
+                sessionStorage.removeItem('blind_reflections_auth');
+                appState.collection = null;
+                setTimeout(() => { location.reload(); }, 1000); // Give user a moment to see the warning
+            }
         } finally {
             if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none';
         }
@@ -1347,7 +1320,7 @@ function initializeReflectionsApp() {
             const recordUpdate = {
                 uuid: uuid,
                 date: entryDate,
-                entry: { "%allot": editText },
+                entry: editText,
                 tags: tagsArray
             };
             const filter = { _id: entryIdToEdit };
@@ -2059,12 +2032,15 @@ function initializeAuth() {
     async function initializeCollection(seed) {
         // Ensure collection is not re-initialized unnecessarily
         if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
-             return;
+          return;
         }
         try {
             // Store the instance in appState
             appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, 'store', null, seed);
             await appState.collection.init();
+
+            appState.collection_sum = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, 'sum', null, seed);
+            await appState.collection_sum.init();
         } catch (error) {
             console.error("Failed to initialize collection:", error);
             showWarningModal(`Error initializing connection: ${error.message}`);
@@ -2336,8 +2312,17 @@ function initializeAuth() {
 
     // Check if user is already logged in on page load
     const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
-    const savedPassword = sessionStorage.getItem(SESSION_PASSWORD_KEY);
-    if (savedUuid) {
+    const savedAuth = sessionStorage.getItem(SESSION_AUTH_KEY);
+    let savedPassword = null;
+    if (savedAuth) {
+        try {
+            const parsedAuth = JSON.parse(savedAuth);
+            savedPassword = parsedAuth.password;
+        } catch (e) {
+            savedPassword = null;
+        }
+    }
+    if (savedUuid && savedPassword) {
         // Wrap in an async IIFE to use await for initialization
         (async () => {
             displayLoggedInUser(savedUuid);
