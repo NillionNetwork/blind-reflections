@@ -598,7 +598,8 @@ function initializeReflectionsApp() {
         const entryTextArea = document.getElementById('entry-text');
         const entryText = entryTextArea.value.trim();
         const tagsInput = document.getElementById('entry-tags'); // Get tags input
-        const tagsText = tagsInput.value.trim(); // Get tags text
+        // Ensure tagsInput is found before accessing value
+        const tagsText = tagsInput ? tagsInput.value.trim() : '';
 
         // Check if entry is empty
         if (!entryText) {
@@ -614,10 +615,10 @@ function initializeReflectionsApp() {
         }
 
         // Process tags: split by comma, trim whitespace, remove empty tags
+        // Default to empty array if tagsText is empty
         const tagsArray = tagsText
-            .split(',')
-            .map(tag => tag.trim())
-            .filter(tag => tag !== '');
+            ? tagsText.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+            : [];
 
         // Save entry to nilDB
         const message_for_nildb = {
@@ -647,7 +648,8 @@ function initializeReflectionsApp() {
                 data[currentSelectedDate] = [];
             }
 
-            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray }); // Add tags here too
+            // Add the 'date' property here, using currentSelectedDate
+            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate });
             saveData(data);
 
             // Clear the input fields
@@ -749,18 +751,23 @@ function initializeReflectionsApp() {
         if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block'; // Show spinner
 
         // Fetch and display entries for the selected date
+        await fetchEntriesByDate(dateStr); // Call the refactored function
+
+        // Clear the tag search input when a date is selected
+        const tagInput = document.getElementById('tag-search-input');
+        if (tagInput) tagInput.value = '';
+    }
+
+    // Refactored function to fetch entries by date
+    async function fetchEntriesByDate(dateStr) {
+        const entriesLoadingSpinner = document.getElementById('entries-loading-spinner'); // Get spinner ref inside
         try {
             const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
             const uuid = authData?.uuid;
 
             if (!uuid) {
                 showWarningModal('You must be logged in to view memories.');
-                 // Hide cards if not logged in?
-                 document.getElementById('add-entry-card').style.display = 'none';
-                 document.getElementById('retrieved-entries-card').style.display = 'none';
-                 document.getElementById('no-date-message').style.display = 'block'; // Show no-date message again?
-                 currentSelectedDate = null; // Reset selection
-                 if (dateEl) dateEl.classList.remove('fc-day-selected');
+                // Optionally hide cards, reset selection etc. (Consider UI state consistency)
                 return;
             }
 
@@ -768,42 +775,151 @@ function initializeReflectionsApp() {
                 throw new Error("Collection not initialized. Please log in.");
             }
 
-            // Use readFromNodes to pull data from nilDB
+            console.log(`Fetching entries for date: ${dateStr}`);
             const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
-            console.log('Data read from nilDB:', dataReadFromNilDB);
+            console.log('Data read from nilDB (by date):', dataReadFromNilDB);
 
-            // Process and display the fetched entries
-            const entries = dataReadFromNilDB.flatMap(nodeArray => {
-                if (Array.isArray(nodeArray)) {
-                    // Flatten the inner array and map the entries
-                    return nodeArray.map(entry => ({
-                        id: entry._id,
-                        timestamp: entry._created,
-                        text: entry.entry,
-                        tags: entry.tags,
-                    }));
-                }
-                return []; // Return an empty array if nodeArray is not an array
-            });
+            const entries = processFetchedEntries(dataReadFromNilDB);
 
-            console.log('Processed entries:', entries);
-
-            // Update local storage with fetched entries
+            // Update local storage (optional, maybe only cache date-based fetches?)
             const data = loadData();
             data[dateStr] = entries;
             saveData(data);
 
-            // Display the fetched entries
-            displayEntries(data[dateStr]);
+            displayEntries(entries);
         } catch (error) {
-            console.error('Failed to read data from nilDB:', error);
-            showWarningModal(`Failed to fetch memories: ${error.message}`);
-            // Ensure entries display shows error state in the correct card
-            displayEntries(null); // Pass null to trigger error display in displayEntries
+            console.error('Failed to read data by date from nilDB:', error);
+            showWarningModal(`Failed to fetch memories for date: ${error.message}`);
+            displayEntries(null);
         } finally {
-            // Hide loading animation
-            if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none'; // Hide spinner
+            if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none';
         }
+    }
+
+    // New function to fetch entries by tag
+    async function fetchEntriesByTag(tagsArray, logic) { // Accept array and logic
+        const entriesLoadingSpinner = document.getElementById('entries-loading-spinner');
+        const retrievedTitleEl = document.getElementById('retrieved-entries-title');
+        const tagSearchButton = document.getElementById('tag-search-button'); // Need button for logic
+
+        // Update title based on tags and logic
+        const tagsString = tagsArray.map(t => `\"${t}\"`).join(', ');
+        const logicString = tagSearchButton ? tagSearchButton.dataset.selectedLogic : 'OR'; // Read current logic
+        // Only show logic if more than one tag
+        const titleText = tagsArray.length > 1
+            ? `Memories for Tags: ${tagsString} (${logicString})`
+            : `Memories for Tag: ${tagsString}`;
+        if (retrievedTitleEl) retrievedTitleEl.textContent = titleText;
+        if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block';
+
+        // Ensure cards are visible (might be hidden if app just loaded)
+        document.getElementById('add-entry-card').style.display = 'block';
+        document.getElementById('retrieved-entries-card').style.display = 'block';
+        document.getElementById('no-date-message').style.display = 'none';
+
+        // Deselect any selected date in calendar visually
+        if (currentSelectedDate) {
+           const prevEl = calendar.el.querySelector(`.fc-day[data-date="${currentSelectedDate}"]`);
+           if (prevEl) prevEl.classList.remove('fc-day-selected');
+        }
+
+        let finalEntries = [];
+        let errorOccurred = false;
+
+        try {
+            const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+            const uuid = authData?.uuid;
+
+            if (!uuid || !appState.collection) {
+                showWarningModal('You must be logged in and collection initialized to search.');
+                errorOccurred = true;
+                return;
+            }
+
+            if (logicString === 'OR') {
+                console.log(`Fetching entries for tags (OR): ${tagsArray.join(', ')}`);
+                const allNodeResults = [];
+                for (const tag of tagsArray) {
+                    console.log(`Querying for tag: ${tag}`); // Log each tag query
+                    const dataRead = await appState.collection.readFromNodes({ uuid, tags: tag });
+                    console.log(`Raw results for tag '${tag}':`, JSON.stringify(dataRead)); // Log raw results
+                    allNodeResults.push(...dataRead); // Accumulate results from all nodes for this tag
+                }
+                console.log('All raw node results collected (OR):', JSON.stringify(allNodeResults)); // Log combined raw results
+                // Process and deduplicate based on ID
+                const processedEntries = processFetchedEntries(allNodeResults);
+                const uniqueEntriesMap = new Map();
+                processedEntries.forEach(entry => {
+                    if (!uniqueEntriesMap.has(entry.id)) {
+                        uniqueEntriesMap.set(entry.id, entry);
+                    }
+                });
+                finalEntries = Array.from(uniqueEntriesMap.values());
+                 console.log(`Processed & Deduplicated Entries (OR logic for ${tagsArray.join(', ')}):`, finalEntries);
+
+
+            } else { // AND logic
+                console.log(`Fetching entries for tags (AND): ${tagsArray.join(', ')}`);
+                if (tagsArray.length === 0) {
+                    finalEntries = []; // No tags means no results for AND
+                } else {
+                    // Fetch based on the first tag
+                    const firstTag = tagsArray[0];
+                    console.log(`Querying for first tag (AND): ${firstTag}`);
+                    const dataRead = await appState.collection.readFromNodes({ uuid, tags: firstTag });
+                    console.log(`Raw results for first tag '${firstTag}':`, JSON.stringify(dataRead));
+                    let potentialMatches = processFetchedEntries(dataRead);
+                    console.log(`Processed potential matches after first tag:`, potentialMatches);
+
+                    // Client-side filter for remaining tags
+                    if (tagsArray.length > 1) {
+                         finalEntries = potentialMatches.filter(entry => {
+                             // Check if entry.tags (which should be an array) contains ALL other tags
+                             const hasAllTags = tagsArray.slice(1).every(requiredTag =>
+                                 Array.isArray(entry.tags) && entry.tags.includes(requiredTag)
+                             );
+                             // if (!hasAllTags) console.log(`Entry ${entry.id} filtered out (missing tags)`);
+                             return hasAllTags;
+                         });
+                    } else {
+                         finalEntries = potentialMatches; // Only one tag, so initial fetch is enough
+                    }
+                     console.log(`Final Entries (AND logic for ${tagsArray.join(', ')}):`, finalEntries);
+                }
+            }
+
+        } catch (error) {
+            console.error(`Failed to read data by tag (${logicString}) from nilDB:`, error);
+            showWarningModal(`Failed to fetch memories for tags (${logicString}): ${error.message}`);
+            errorOccurred = true; // Mark error
+            // Don't call displayEntries(null) here, let finally handle spinner, displayEntries called after finally if no error
+        } finally {
+            if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none';
+            // Only display results if no error occurred during fetch/processing
+            if (!errorOccurred) {
+                displayEntries(finalEntries);
+            } else {
+                displayEntries(null); // Show error state in display
+            }
+        }
+    }
+
+    // Helper function to process fetched entries (avoids duplication)
+    function processFetchedEntries(dataReadFromNilDB) {
+        const entries = dataReadFromNilDB.flatMap(nodeArray => {
+            if (Array.isArray(nodeArray)) {
+                return nodeArray.map(entry => ({
+                    id: entry._id,
+                    timestamp: entry._created, // Use _created as timestamp
+                    text: entry.entry,
+                    tags: entry.tags,
+                    date: entry.date // Add the reflection date field
+                }));
+            }
+            return [];
+        });
+        console.log('Processed entries:', entries);
+        return entries;
     }
 
     // Global variable to store the memory queue
@@ -867,22 +983,30 @@ function initializeReflectionsApp() {
             entryCard.style.cursor = 'pointer'; // Make it look clickable
             entryCard.setAttribute('data-entry-id', entry.id); // Store ID for reference
 
-            // Format timestamp
-            const timestamp = new Date(entry.timestamp);
-            const formattedTime = timestamp.toLocaleTimeString('en-US', {
+            // Format creation timestamp
+            const creationTimestamp = new Date(entry.timestamp);
+            const formattedCreationTime = creationTimestamp.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
-            const formattedDate = timestamp.toLocaleDateString('en-US', {
+            const formattedCreationDate = creationTimestamp.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
                 year: 'numeric'
             });
 
+            // Format the reflection date (which is just YYYY-MM-DD string)
+            // Use formatDisplayDate for consistency if needed, or keep simple
+            const reflectionDate = entry.date; // Assuming it's YYYY-MM-DD
+            // Optional: Use formatDisplayDate(reflectionDate) for fuller format
+            const formattedReflectionDate = formatDisplayDate(reflectionDate);
+
             entryCard.innerHTML = `
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <span class="entry-timestamp">${formattedDate} at ${formattedTime}</span>
+                    <div class="entry-meta mb-2">
+                        <span class="entry-timestamp small text-muted">
+                            Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
+                        </span>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
                     <!-- Container for Tags -->
@@ -1147,13 +1271,54 @@ function initializeReflectionsApp() {
     // Event Listeners
     document.getElementById('save-entry-btn').addEventListener('click', saveEntry);
 
-    // Handle entry form submission with Enter key
-    document.getElementById('entry-text').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            saveEntry();
-        }
-    });
+    // --- Tag Search Event Listeners ---
+
+    // Add listeners for the new tag logic dropdown
+    const tagLogicDropdownMenu = document.getElementById('tag-logic-dropdown-menu');
+    const tagSearchButtonForLogic = document.getElementById('tag-search-button'); // Use different var name
+    const tagLogicDisplaySpan = document.getElementById('tag-logic-display');
+
+    if (tagLogicDropdownMenu && tagSearchButtonForLogic && tagLogicDisplaySpan) {
+        tagLogicDropdownMenu.addEventListener('click', (event) => {
+            // Use closest to handle clicks on the button itself or its content
+            const button = event.target.closest('.dropdown-item[data-logic]');
+            if (button) {
+                const selectedLogic = button.dataset.logic;
+                // Update the data attribute on the main button
+                tagSearchButtonForLogic.dataset.selectedLogic = selectedLogic;
+                // Update the display span
+                tagLogicDisplaySpan.textContent = `(${selectedLogic})`;
+                console.log(`Tag logic selected: ${selectedLogic}`);
+            }
+        });
+    }
+
+    // Modify listener for the main tag search button
+    const tagSearchButton = document.getElementById('tag-search-button');
+    const tagSearchInput = document.getElementById('tag-search-input');
+
+    if (tagSearchButton && tagSearchInput) {
+        tagSearchButton.addEventListener('click', () => {
+            // Split tags, trim, filter empty
+            const tagsArray = tagSearchInput.value
+                .split(',')
+                .map(tag => tag.trim())
+                .filter(tag => tag !== '');
+
+            if (tagsArray.length > 0) {
+                const selectedLogic = tagSearchButton.dataset.selectedLogic || 'OR'; // Get logic
+                fetchEntriesByTag(tagsArray, selectedLogic); // Pass array and logic
+            } else {
+                showWarningModal("Please enter at least one tag to search.");
+            }
+        });
+        // Keep Enter key listener
+        tagSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                tagSearchButton.click(); // Trigger button click
+            }
+        });
+    }
 
     // --- Define Speech API access once ---
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

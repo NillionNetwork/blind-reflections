@@ -687,3 +687,23 @@ header {
 /* [data-bs-theme="light"] .entry-tag { */
 /*    color: #212529; */ /* Example: Dark text on light theme */
 /* } */
+
+/* Tag Search Button Hover Effects */
+#tag-search-button:hover,
+#tag-logic-dropdown-toggle:hover {
+  background-color: var(--accent-color); /* Use accent color for teal */
+  border-color: var(--accent-color);
+  color: white; /* Ensure text is readable on teal */
+}
+
+#tag-search-button:hover .fas,
+#tag-logic-dropdown-toggle:hover .fas {
+  color: white; /* Match icon color to text on hover */
+}
+
+/* Optional: Style focus ring to match */
+#tag-search-button:focus,
+#tag-logic-dropdown-toggle:focus {
+  /* Assuming --accent-rgb is defined, otherwise use a default teal rgba */
+  box-shadow: 0 0 0 0.25rem rgba(var(--accent-rgb, 32, 201, 151), 0.5);
+}

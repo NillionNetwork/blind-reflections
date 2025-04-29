@@ -7961,7 +7961,7 @@ if (cid) {
       const entryTextArea2 = document.getElementById("entry-text");
       const entryText = entryTextArea2.value.trim();
       const tagsInput = document.getElementById("entry-tags");
-      const tagsText = tagsInput.value.trim();
+      const tagsText = tagsInput ? tagsInput.value.trim() : "";
       if (!entryText) {
         showWarningModal("Please enter some text for your reflection.");
         return;
@@ -7971,7 +7971,7 @@ if (cid) {
         showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
         return;
       }
-      const tagsArray = tagsText.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "");
+      const tagsArray = tagsText ? tagsText.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "") : [];
       const message_for_nildb = {
         uuid,
         date: currentSelectedDate,
@@ -7993,7 +7993,7 @@ if (cid) {
         if (!data[currentSelectedDate]) {
           data[currentSelectedDate] = [];
         }
-        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray });
+        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate });
         saveData(data);
         entryTextArea2.value = "";
         tagsInput.value = "";
@@ -8057,46 +8057,137 @@ if (cid) {
       document.getElementById("retrieved-entries-card").style.display = "block";
       document.getElementById("no-date-message").style.display = "none";
       if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = "inline-block";
+      await fetchEntriesByDate(dateStr);
+      const tagInput = document.getElementById("tag-search-input");
+      if (tagInput) tagInput.value = "";
+    }
+    async function fetchEntriesByDate(dateStr) {
+      const entriesLoadingSpinner2 = document.getElementById("entries-loading-spinner");
       try {
         const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
         const uuid = authData?.uuid;
         if (!uuid) {
           showWarningModal("You must be logged in to view memories.");
-          document.getElementById("add-entry-card").style.display = "none";
-          document.getElementById("retrieved-entries-card").style.display = "none";
-          document.getElementById("no-date-message").style.display = "block";
-          currentSelectedDate = null;
-          if (dateEl) dateEl.classList.remove("fc-day-selected");
           return;
         }
         if (!appState.collection) {
           throw new Error("Collection not initialized. Please log in.");
         }
+        console.log(`Fetching entries for date: ${dateStr}`);
         const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
-        console.log("Data read from nilDB:", dataReadFromNilDB);
-        const entries = dataReadFromNilDB.flatMap((nodeArray) => {
-          if (Array.isArray(nodeArray)) {
-            return nodeArray.map((entry) => ({
-              id: entry._id,
-              timestamp: entry._created,
-              text: entry.entry,
-              tags: entry.tags
-            }));
-          }
-          return [];
-        });
-        console.log("Processed entries:", entries);
+        console.log("Data read from nilDB (by date):", dataReadFromNilDB);
+        const entries = processFetchedEntries(dataReadFromNilDB);
         const data = loadData();
         data[dateStr] = entries;
         saveData(data);
-        displayEntries(data[dateStr]);
+        displayEntries(entries);
       } catch (error) {
-        console.error("Failed to read data from nilDB:", error);
-        showWarningModal(`Failed to fetch memories: ${error.message}`);
+        console.error("Failed to read data by date from nilDB:", error);
+        showWarningModal(`Failed to fetch memories for date: ${error.message}`);
         displayEntries(null);
       } finally {
-        if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = "none";
+        if (entriesLoadingSpinner2) entriesLoadingSpinner2.style.display = "none";
       }
+    }
+    async function fetchEntriesByTag(tagsArray, logic) {
+      const entriesLoadingSpinner2 = document.getElementById("entries-loading-spinner");
+      const retrievedTitleEl = document.getElementById("retrieved-entries-title");
+      const tagSearchButton2 = document.getElementById("tag-search-button");
+      const tagsString = tagsArray.map((t) => `"${t}"`).join(", ");
+      const logicString = tagSearchButton2 ? tagSearchButton2.dataset.selectedLogic : "OR";
+      const titleText = tagsArray.length > 1 ? `Memories for Tags: ${tagsString} (${logicString})` : `Memories for Tag: ${tagsString}`;
+      if (retrievedTitleEl) retrievedTitleEl.textContent = titleText;
+      if (entriesLoadingSpinner2) entriesLoadingSpinner2.style.display = "inline-block";
+      document.getElementById("add-entry-card").style.display = "block";
+      document.getElementById("retrieved-entries-card").style.display = "block";
+      document.getElementById("no-date-message").style.display = "none";
+      if (currentSelectedDate) {
+        const prevEl = calendar.el.querySelector(`.fc-day[data-date="${currentSelectedDate}"]`);
+        if (prevEl) prevEl.classList.remove("fc-day-selected");
+      }
+      let finalEntries = [];
+      let errorOccurred = false;
+      try {
+        const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+        const uuid = authData?.uuid;
+        if (!uuid || !appState.collection) {
+          showWarningModal("You must be logged in and collection initialized to search.");
+          errorOccurred = true;
+          return;
+        }
+        if (logicString === "OR") {
+          console.log(`Fetching entries for tags (OR): ${tagsArray.join(", ")}`);
+          const allNodeResults = [];
+          for (const tag of tagsArray) {
+            console.log(`Querying for tag: ${tag}`);
+            const dataRead = await appState.collection.readFromNodes({ uuid, tags: tag });
+            console.log(`Raw results for tag '${tag}':`, JSON.stringify(dataRead));
+            allNodeResults.push(...dataRead);
+          }
+          console.log("All raw node results collected (OR):", JSON.stringify(allNodeResults));
+          const processedEntries = processFetchedEntries(allNodeResults);
+          const uniqueEntriesMap = /* @__PURE__ */ new Map();
+          processedEntries.forEach((entry) => {
+            if (!uniqueEntriesMap.has(entry.id)) {
+              uniqueEntriesMap.set(entry.id, entry);
+            }
+          });
+          finalEntries = Array.from(uniqueEntriesMap.values());
+          console.log(`Processed & Deduplicated Entries (OR logic for ${tagsArray.join(", ")}):`, finalEntries);
+        } else {
+          console.log(`Fetching entries for tags (AND): ${tagsArray.join(", ")}`);
+          if (tagsArray.length === 0) {
+            finalEntries = [];
+          } else {
+            const firstTag = tagsArray[0];
+            console.log(`Querying for first tag (AND): ${firstTag}`);
+            const dataRead = await appState.collection.readFromNodes({ uuid, tags: firstTag });
+            console.log(`Raw results for first tag '${firstTag}':`, JSON.stringify(dataRead));
+            let potentialMatches = processFetchedEntries(dataRead);
+            console.log(`Processed potential matches after first tag:`, potentialMatches);
+            if (tagsArray.length > 1) {
+              finalEntries = potentialMatches.filter((entry) => {
+                const hasAllTags = tagsArray.slice(1).every(
+                  (requiredTag) => Array.isArray(entry.tags) && entry.tags.includes(requiredTag)
+                );
+                return hasAllTags;
+              });
+            } else {
+              finalEntries = potentialMatches;
+            }
+            console.log(`Final Entries (AND logic for ${tagsArray.join(", ")}):`, finalEntries);
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to read data by tag (${logicString}) from nilDB:`, error);
+        showWarningModal(`Failed to fetch memories for tags (${logicString}): ${error.message}`);
+        errorOccurred = true;
+      } finally {
+        if (entriesLoadingSpinner2) entriesLoadingSpinner2.style.display = "none";
+        if (!errorOccurred) {
+          displayEntries(finalEntries);
+        } else {
+          displayEntries(null);
+        }
+      }
+    }
+    function processFetchedEntries(dataReadFromNilDB) {
+      const entries = dataReadFromNilDB.flatMap((nodeArray) => {
+        if (Array.isArray(nodeArray)) {
+          return nodeArray.map((entry) => ({
+            id: entry._id,
+            timestamp: entry._created,
+            // Use _created as timestamp
+            text: entry.entry,
+            tags: entry.tags,
+            date: entry.date
+            // Add the reflection date field
+          }));
+        }
+        return [];
+      });
+      console.log("Processed entries:", entries);
+      return entries;
     }
     const memoryQueue = [];
     function displayEntries(entries) {
@@ -8140,20 +8231,24 @@ if (cid) {
         entryCard.className = "card entry-card mb-3";
         entryCard.style.cursor = "pointer";
         entryCard.setAttribute("data-entry-id", entry.id);
-        const timestamp = new Date(entry.timestamp);
-        const formattedTime = timestamp.toLocaleTimeString("en-US", {
+        const creationTimestamp = new Date(entry.timestamp);
+        const formattedCreationTime = creationTimestamp.toLocaleTimeString("en-US", {
           hour: "2-digit",
           minute: "2-digit"
         });
-        const formattedDate = timestamp.toLocaleDateString("en-US", {
+        const formattedCreationDate = creationTimestamp.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric"
         });
+        const reflectionDate = entry.date;
+        const formattedReflectionDate = formatDisplayDate(reflectionDate);
         entryCard.innerHTML = `
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <span class="entry-timestamp">${formattedDate} at ${formattedTime}</span>
+                    <div class="entry-meta mb-2">
+                        <span class="entry-timestamp small text-muted">
+                            Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
+                        </span>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
                     <!-- Container for Tags -->
@@ -8343,12 +8438,38 @@ ${memoryContext}`
     calendar.render();
     markDatesWithEntries();
     document.getElementById("save-entry-btn").addEventListener("click", saveEntry);
-    document.getElementById("entry-text").addEventListener("keydown", function(e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        saveEntry();
-      }
-    });
+    const tagLogicDropdownMenu = document.getElementById("tag-logic-dropdown-menu");
+    const tagSearchButtonForLogic = document.getElementById("tag-search-button");
+    const tagLogicDisplaySpan = document.getElementById("tag-logic-display");
+    if (tagLogicDropdownMenu && tagSearchButtonForLogic && tagLogicDisplaySpan) {
+      tagLogicDropdownMenu.addEventListener("click", (event) => {
+        const button = event.target.closest(".dropdown-item[data-logic]");
+        if (button) {
+          const selectedLogic = button.dataset.logic;
+          tagSearchButtonForLogic.dataset.selectedLogic = selectedLogic;
+          tagLogicDisplaySpan.textContent = `(${selectedLogic})`;
+          console.log(`Tag logic selected: ${selectedLogic}`);
+        }
+      });
+    }
+    const tagSearchButton = document.getElementById("tag-search-button");
+    const tagSearchInput = document.getElementById("tag-search-input");
+    if (tagSearchButton && tagSearchInput) {
+      tagSearchButton.addEventListener("click", () => {
+        const tagsArray = tagSearchInput.value.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "");
+        if (tagsArray.length > 0) {
+          const selectedLogic = tagSearchButton.dataset.selectedLogic || "OR";
+          fetchEntriesByTag(tagsArray, selectedLogic);
+        } else {
+          showWarningModal("Please enter at least one tag to search.");
+        }
+      });
+      tagSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          tagSearchButton.click();
+        }
+      });
+    }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const micButton = document.getElementById("mic-button");
     const micIcon = document.getElementById("mic-icon");
