@@ -15774,6 +15774,58 @@ if (cid) {
       );
       return recombinedRecords;
     }
+    /**
+     * Updates data on all nodes, with optional field encryption
+     * @param {array} recordUpdate - Data to update
+     * @param {object} filter - Filter criteria for which records to update
+     * @returns {Promise<array>} Array of update results from each node
+     */
+    async updateDataToNodes(recordUpdate, filter = {}) {
+      const transformedData = await this.allotData([recordUpdate]);
+      const updateDataOnNode = async (node, index) => {
+        try {
+          const jwt = await this.generateNodeToken(node.did);
+          const [nodeData] = transformedData.map(
+            (encryptedShares) => encryptedShares.length !== this.nodes.length ? encryptedShares[0] : encryptedShares[index]
+          );
+          const payload = {
+            schema: this.schemaId,
+            update: {
+              $set: nodeData
+            },
+            filter
+          };
+          const result = await this.makeRequest(
+            node.url,
+            "data/update",
+            jwt,
+            payload
+          );
+          return { result, node };
+        } catch (error) {
+          console.error(`\u274C Failed to write to ${node.url}:`, error.message);
+          throw { error, node };
+        }
+      };
+      const settledResults = await Promise.allSettled(
+        this.nodes.map((node, index) => updateDataOnNode(node, index))
+      );
+      const results = settledResults.map((settledResult) => {
+        if (settledResult.status === "fulfilled") {
+          return {
+            ...settledResult.value.result,
+            node: settledResult.value.node
+          };
+        }
+        if (settledResult.status === "rejected") {
+          return {
+            error: settledResult.reason.error,
+            node: settledResult.reason.node
+          };
+        }
+      });
+      return results;
+    }
     async deleteDataFromNodes(filter = {}) {
       const results = [];
       for (const node of this.nodes) {
@@ -16247,10 +16299,16 @@ if (cid) {
         const formattedReflectionDate = formatDisplayDate(reflectionDate);
         entryCard.innerHTML = `
                 <div class="card-body">
-                    <div class="entry-meta mb-2">
-                        <span class="entry-timestamp small text-muted">
-                            Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
-                        </span>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="entry-meta mb-2">
+                            <span class="entry-timestamp small text-muted">
+                                Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
+                            </span>
+                        </div>
+                        <div class="d-flex gap-1">
+                          <button class="btn btn-outline-secondary btn-sm entry-edit-btn" title="Edit this memory" data-entry-id="${entry.id}"><i class="fas fa-edit"></i></button>
+                          <button class="btn btn-outline-danger btn-sm entry-delete-btn" title="Delete this memory" data-entry-id="${entry.id}"><i class="fas fa-trash"></i></button>
+                        </div>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
                     <!-- Container for Tags -->
@@ -16270,7 +16328,8 @@ if (cid) {
             });
           }
         }
-        entryCard.addEventListener("click", () => {
+        entryCard.addEventListener("click", (e3) => {
+          if (e3.target.closest(".entry-delete-btn")) return;
           const memoryText = entry.text;
           const memoryDate = currentSelectedDate;
           const alreadyExists = memoryQueue.some((item) => item.id === entry.id);
@@ -16282,9 +16341,111 @@ if (cid) {
           }
           renderMemoryDisplayBox();
         });
+        entryCard.querySelector(".entry-delete-btn").addEventListener("click", (e3) => {
+          e3.stopPropagation();
+          showDeleteConfirmModal(entry);
+        });
+        entryCard.querySelector(".entry-edit-btn").addEventListener("click", (e3) => {
+          e3.stopPropagation();
+          showEditEntryModal(entry);
+        });
         entriesListEl.appendChild(entryCard);
       });
     }
+    let entryIdToDelete = null;
+    function showDeleteConfirmModal(entry) {
+      entryIdToDelete = entry.id;
+      const modal = new bootstrap.Modal(document.getElementById("delete-confirm-modal"));
+      const msg = document.getElementById("delete-confirm-message");
+      msg.textContent = "Are you sure you want to delete this memory?";
+      modal.show();
+    }
+    let entryIdToEdit = null;
+    function showEditEntryModal(entry) {
+      entryIdToEdit = entry.id;
+      document.getElementById("edit-entry-text").value = entry.text;
+      document.getElementById("edit-entry-tags").value = Array.isArray(entry.tags) ? entry.tags.join(", ") : "";
+      const modal = new bootstrap.Modal(document.getElementById("edit-entry-modal"));
+      modal.show();
+    }
+    document.getElementById("save-edit-entry-btn").addEventListener("click", async function() {
+      if (!entryIdToEdit) return;
+      const editText = document.getElementById("edit-entry-text").value.trim();
+      const editTags = document.getElementById("edit-entry-tags").value.trim();
+      const tagsArray = editTags ? editTags.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "") : [];
+      if (!editText) {
+        showWarningModal("Please enter some text for your memory.");
+        return;
+      }
+      const MAX_CHARS = 25e3;
+      if (editText.length > MAX_CHARS) {
+        showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
+        return;
+      }
+      const saveBtn = document.getElementById("save-edit-entry-btn");
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+      try {
+        if (!appState.collection) throw new Error("Collection not initialized");
+        const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
+        const uuid = authData?.uuid;
+        if (!uuid) throw new Error("No UUID found. Please log in again.");
+        const data = loadData();
+        let entryDate = null;
+        for (const date in data) {
+          if (data[date].some((e3) => e3.id === entryIdToEdit)) {
+            entryDate = date;
+            break;
+          }
+        }
+        if (!entryDate) throw new Error("Could not determine entry date.");
+        const recordUpdate = {
+          uuid,
+          date: entryDate,
+          entry: { "%allot": editText },
+          tags: tagsArray
+        };
+        const filter = { _id: entryIdToEdit };
+        await appState.collection.updateDataToNodes(recordUpdate, filter);
+        if (data[entryDate]) {
+          data[entryDate] = data[entryDate].map(
+            (e3) => e3.id === entryIdToEdit ? { ...e3, text: editText, tags: tagsArray } : e3
+          );
+          saveData(data);
+        }
+        if (currentSelectedDate) {
+          displayEntries(data[currentSelectedDate]);
+        }
+        const modal = bootstrap.Modal.getInstance(document.getElementById("edit-entry-modal"));
+        if (modal) modal.hide();
+        entryIdToEdit = null;
+      } catch (err) {
+        showWarningModal("Failed to update memory: " + (err.message || err));
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = "Save Changes";
+      }
+    });
+    document.getElementById("confirm-delete-btn").addEventListener("click", async function() {
+      if (!entryIdToDelete) return;
+      try {
+        if (!appState.collection) throw new Error("Collection not initialized");
+        await appState.collection.deleteDataFromNodes({ _id: entryIdToDelete });
+        const data = loadData();
+        for (const date in data) {
+          data[date] = data[date].filter((entry) => entry.id !== entryIdToDelete);
+        }
+        saveData(data);
+        if (currentSelectedDate) {
+          displayEntries(data[currentSelectedDate]);
+        }
+        const modal = bootstrap.Modal.getInstance(document.getElementById("delete-confirm-modal"));
+        if (modal) modal.hide();
+        entryIdToDelete = null;
+      } catch (err) {
+        showWarningModal("Failed to delete memory: " + (err.message || err));
+      }
+    });
     function renderMemoryDisplayBox() {
       const memoryDisplayBox = document.getElementById("memory-display-box");
       memoryDisplayBox.innerHTML = "";

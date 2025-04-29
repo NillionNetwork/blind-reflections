@@ -707,3 +707,42 @@ header {
   /* Assuming --accent-rgb is defined, otherwise use a default teal rgba */
   box-shadow: 0 0 0 0.25rem rgba(var(--accent-rgb, 32, 201, 151), 0.5);
 }
+
+/* Entry delete button: gray by default, red on hover */
+.entry-delete-btn {
+  color: var(--bs-secondary-color) !important;
+  border-color: var(--bs-secondary-color) !important;
+  background: none !important;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.entry-delete-btn .fas {
+  color: var(--bs-secondary-color) !important;
+  transition: color 0.2s;
+}
+.entry-delete-btn:hover, .entry-delete-btn:focus {
+  color: var(--bs-danger) !important;
+  border-color: var(--bs-danger) !important;
+  background: none !important;
+}
+.entry-delete-btn:hover .fas, .entry-delete-btn:focus .fas {
+  color: var(--bs-danger) !important;
+}
+
+.entry-edit-btn {
+  color: var(--bs-secondary-color) !important;
+  border-color: var(--bs-secondary-color) !important;
+  background: none !important;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.entry-edit-btn .fas {
+  color: var(--bs-secondary-color) !important;
+  transition: color 0.2s;
+}
+.entry-edit-btn:hover, .entry-edit-btn:focus {
+  color: var(--accent-color) !important;
+  border-color: var(--accent-color) !important;
+  background: none !important;
+}
+.entry-edit-btn:hover .fas, .entry-edit-btn:focus .fas {
+  color: var(--accent-color) !important;
+}

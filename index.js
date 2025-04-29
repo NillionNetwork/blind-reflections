@@ -489,6 +489,66 @@ class SecretVaultWrapper {
       return recombinedRecords;
     }
 
+    /**
+     * Updates data on all nodes, with optional field encryption
+     * @param {array} recordUpdate - Data to update
+     * @param {object} filter - Filter criteria for which records to update
+     * @returns {Promise<array>} Array of update results from each node
+     */
+    async updateDataToNodes(recordUpdate, filter = {}) {
+      const transformedData = await this.allotData([recordUpdate]);
+
+      const updateDataOnNode = async (node, index) => {
+        try {
+          const jwt = await this.generateNodeToken(node.did);
+          const [nodeData] = transformedData.map((encryptedShares) =>
+            encryptedShares.length !== this.nodes.length
+              ? encryptedShares[0]
+              : encryptedShares[index],
+          );
+          const payload = {
+            schema: this.schemaId,
+            update: {
+              $set: nodeData,
+            },
+            filter,
+          };
+
+          const result = await this.makeRequest(
+            node.url,
+            "data/update",
+            jwt,
+            payload,
+          );
+          return { result, node };
+        } catch (error) {
+          console.error(`❌ Failed to write to ${node.url}:`, error.message);
+          throw { error, node };
+        }
+      };
+
+      const settledResults = await Promise.allSettled(
+        this.nodes.map((node, index) => updateDataOnNode(node, index)),
+      );
+
+      const results = settledResults.map((settledResult) => {
+        if (settledResult.status === "fulfilled") {
+          return {
+            ...settledResult.value.result,
+            node: settledResult.value.node,
+          };
+        }
+        if (settledResult.status === "rejected") {
+          return {
+            error: settledResult.reason.error,
+            node: settledResult.reason.node,
+          };
+        }
+      });
+
+      return results;
+    }
+
     async deleteDataFromNodes(filter = {}) {
       const results = [];
 
@@ -1095,8 +1155,8 @@ function initializeReflectionsApp() {
             console.error("displayEntries received non-array data:", entries);
              // Show error message within the retrieved entries card
              noEntriesMessageEl.innerHTML = `
-                 <div class="text-center p-4">
-                     <i class="fas fa-exclamation-triangle fs-1 mb-3 text-warning"></i>
+                 <div class=\"text-center p-4\">
+                     <i class=\"fas fa-exclamation-triangle fs-1 mb-3 text-warning\"></i>
                      <p>Could not load memories for this date.</p>
                  </div>
              `;
@@ -1108,8 +1168,8 @@ function initializeReflectionsApp() {
         if (entries.length === 0) {
             // Show 'no entries' message within the retrieved entries card
             noEntriesMessageEl.innerHTML = `
-                 <div class="text-center p-4">
-                     <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
+                 <div class=\"text-center p-4\">
+                     <i class=\"fas fa-pencil fs-1 mb-3 text-secondary\"></i>
                      <p>No memories for this date yet. Write your first memory!</p>
                  </div>
              `;
@@ -1150,15 +1210,21 @@ function initializeReflectionsApp() {
             const formattedReflectionDate = formatDisplayDate(reflectionDate);
 
             entryCard.innerHTML = `
-                <div class="card-body">
-                    <div class="entry-meta mb-2">
-                        <span class="entry-timestamp small text-muted">
-                            Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
-                        </span>
+                <div class=\"card-body\">
+                    <div class=\"d-flex justify-content-between align-items-start\">
+                        <div class=\"entry-meta mb-2\">
+                            <span class=\"entry-timestamp small text-muted\">
+                                Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
+                            </span>
+                        </div>
+                        <div class=\"d-flex gap-1\">
+                          <button class=\"btn btn-outline-secondary btn-sm entry-edit-btn\" title=\"Edit this memory\" data-entry-id=\"${entry.id}\"><i class=\"fas fa-edit\"></i></button>
+                          <button class=\"btn btn-outline-danger btn-sm entry-delete-btn\" title=\"Delete this memory\" data-entry-id=\"${entry.id}\"><i class=\"fas fa-trash\"></i></button>
+                        </div>
                     </div>
-                    <p class="card-text entry-text">${entry.text}</p>
+                    <p class=\"card-text entry-text\">${entry.text}</p>
                     <!-- Container for Tags -->
-                    <div class="entry-tags-container mt-2">
+                    <div class=\"entry-tags-container mt-2\">
                         <!-- Tags will be injected here by JS -->
                     </div>
                 </div>
@@ -1178,34 +1244,156 @@ function initializeReflectionsApp() {
             }
 
             // Add click event to append the memory to the memory display box
-            entryCard.addEventListener('click', () => {
+            entryCard.addEventListener('click', (e) => {
+                // Prevent click if delete button was clicked
+                if (e.target.closest('.entry-delete-btn')) return;
                 const memoryText = entry.text;
-
-                // Use the selected date instead of the entry's timestamp
                 const memoryDate = currentSelectedDate;
-
-                // Avoid adding duplicate memories to the queue
                 const alreadyExists = memoryQueue.some(item => item.id === entry.id);
                 if (alreadyExists) return;
-
-                // Create data structure for the memory
                 const memoryData = { id: entry.id, date: memoryDate, text: memoryText };
-
-                // Add the memory to the queue
                 memoryQueue.push(memoryData);
-
-                // If the queue exceeds 5 items, remove the first one
                 if (memoryQueue.length > 5) {
                     memoryQueue.shift();
                 }
-
-                // Re-render the memory display box
                 renderMemoryDisplayBox();
+            });
+
+            // Add delete button handler
+            entryCard.querySelector('.entry-delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showDeleteConfirmModal(entry);
+            });
+
+            // Add edit button handler
+            entryCard.querySelector('.entry-edit-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showEditEntryModal(entry);
             });
 
             entriesListEl.appendChild(entryCard);
         });
     }
+
+    // --- Delete confirmation modal logic ---
+    let entryIdToDelete = null;
+    function showDeleteConfirmModal(entry) {
+        entryIdToDelete = entry.id;
+        const modal = new bootstrap.Modal(document.getElementById('delete-confirm-modal'));
+        const msg = document.getElementById('delete-confirm-message');
+        msg.textContent = 'Are you sure you want to delete this memory?';
+        modal.show();
+    }
+
+    // --- Edit entry modal logic ---
+    let entryIdToEdit = null;
+    function showEditEntryModal(entry) {
+        entryIdToEdit = entry.id;
+        // Fill modal fields
+        document.getElementById('edit-entry-text').value = entry.text;
+        document.getElementById('edit-entry-tags').value = Array.isArray(entry.tags) ? entry.tags.join(', ') : '';
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('edit-entry-modal'));
+        modal.show();
+    }
+
+    // Save Changes button handler for edit modal
+    document.getElementById('save-edit-entry-btn').addEventListener('click', async function() {
+        if (!entryIdToEdit) return;
+        const editText = document.getElementById('edit-entry-text').value.trim();
+        const editTags = document.getElementById('edit-entry-tags').value.trim();
+        const tagsArray = editTags ? editTags.split(',').map(tag => tag.trim()).filter(tag => tag !== '') : [];
+
+        // Validate
+        if (!editText) {
+            showWarningModal('Please enter some text for your memory.');
+            return;
+        }
+        const MAX_CHARS = 25000;
+        if (editText.length > MAX_CHARS) {
+            showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
+            return;
+        }
+
+        // Show loading state (disable button)
+        const saveBtn = document.getElementById('save-edit-entry-btn');
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+
+        try {
+            if (!appState.collection) throw new Error('Collection not initialized');
+            // Prepare update object
+            const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+            const uuid = authData?.uuid;
+            if (!uuid) throw new Error('No UUID found. Please log in again.');
+            // Find the date for this entry in local storage
+            const data = loadData();
+            let entryDate = null;
+            for (const date in data) {
+                if (data[date].some(e => e.id === entryIdToEdit)) {
+                    entryDate = date;
+                    break;
+                }
+            }
+            if (!entryDate) throw new Error('Could not determine entry date.');
+            // Build update object
+            const recordUpdate = {
+                uuid: uuid,
+                date: entryDate,
+                entry: { "%allot": editText },
+                tags: tagsArray
+            };
+            const filter = { _id: entryIdToEdit };
+            // Update on all nodes
+            await appState.collection.updateDataToNodes(recordUpdate, filter);
+            // Update local storage
+            if (data[entryDate]) {
+                data[entryDate] = data[entryDate].map(e =>
+                    e.id === entryIdToEdit ? { ...e, text: editText, tags: tagsArray } : e
+                );
+                saveData(data);
+            }
+            // Refresh UI
+            if (currentSelectedDate) {
+                displayEntries(data[currentSelectedDate]);
+            }
+            // Hide modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('edit-entry-modal'));
+            if (modal) modal.hide();
+            entryIdToEdit = null;
+        } catch (err) {
+            showWarningModal('Failed to update memory: ' + (err.message || err));
+        } finally {
+            // Restore button state
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = 'Save Changes';
+        }
+    });
+
+    document.getElementById('confirm-delete-btn').addEventListener('click', async function() {
+        if (!entryIdToDelete) return;
+        try {
+            if (!appState.collection) throw new Error('Collection not initialized');
+            // Call deleteDataFromNodes with filter {_id: entryIdToDelete}
+            await appState.collection.deleteDataFromNodes({ _id: entryIdToDelete });
+            // Remove from local cache
+            const data = loadData();
+            for (const date in data) {
+                data[date] = data[date].filter(entry => entry.id !== entryIdToDelete);
+            }
+            saveData(data);
+            // Refresh display
+            if (currentSelectedDate) {
+                displayEntries(data[currentSelectedDate]);
+            }
+            // Hide modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('delete-confirm-modal'));
+            if (modal) modal.hide();
+            entryIdToDelete = null;
+        } catch (err) {
+            showWarningModal('Failed to delete memory: ' + (err.message || err));
+        }
+    });
 
     // Function to render the memory display box
     function renderMemoryDisplayBox() {
