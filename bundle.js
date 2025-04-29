@@ -7817,6 +7817,63 @@ if (cid) {
       }
     }
   };
+  function showWarningModal(message) {
+    const template = document.getElementById("warning-modal-template");
+    if (!template) {
+      console.error("Warning modal template not found!");
+      alert(message);
+      return;
+    }
+    const clone = template.content.cloneNode(true);
+    const modalElement = clone.querySelector(".modal");
+    const messageElement = clone.querySelector(".warning-message");
+    if (!modalElement || !messageElement) {
+      console.error("Essential elements missing in warning modal template!");
+      return;
+    }
+    messageElement.textContent = message;
+    document.body.appendChild(modalElement);
+    const modalInstance = new bootstrap.Modal(modalElement);
+    modalInstance.show();
+    modalElement.addEventListener("hidden.bs.modal", () => {
+      modalElement.remove();
+    });
+  }
+  function showLLMResponseModal(responseContent) {
+    const template = document.getElementById("llm-response-modal-template");
+    if (!template) {
+      console.error("LLM response modal template not found!");
+      alert("Error displaying response.");
+      return;
+    }
+    const clone = template.content.cloneNode(true);
+    const modalElement = clone.querySelector(".modal");
+    const responseContentElement = clone.querySelector(".response-content");
+    const copyButton = clone.querySelector(".copy-response-btn");
+    if (!modalElement || !responseContentElement || !copyButton) {
+      console.error("Essential elements missing in LLM response modal template!");
+      return;
+    }
+    responseContentElement.textContent = responseContent;
+    document.body.appendChild(modalElement);
+    const modalInstance = new bootstrap.Modal(modalElement);
+    modalInstance.show();
+    copyButton.addEventListener("click", () => {
+      navigator.clipboard.writeText(responseContent).then(() => {
+        copyButton.textContent = "Copied!";
+        copyButton.disabled = true;
+        setTimeout(() => {
+          copyButton.textContent = "Copy Response";
+          copyButton.disabled = false;
+        }, 1500);
+      }).catch((err) => {
+        console.error("Failed to copy text:", err);
+      });
+    });
+    modalElement.addEventListener("hidden.bs.modal", () => {
+      modalElement.remove();
+    });
+  }
   function initializeReflectionsApp() {
     let currentSelectedDate = null;
     let calendar;
@@ -7890,19 +7947,19 @@ if (cid) {
       const uuid = authData?.uuid;
       if (!uuid) {
         const authModal = new bootstrap.Modal(document.getElementById("authModal"));
-        showWarningModal2("You must be logged in to save a memory.");
+        showWarningModal("You must be logged in to save a memory.");
         if (authModal) authModal.show();
         return;
       }
       const entryTextArea = document.getElementById("entry-text");
       const entryText = entryTextArea.value.trim();
       if (!entryText) {
-        showWarningModal2("Please enter some text for your reflection.");
+        showWarningModal("Please enter some text for your reflection.");
         return;
       }
       const MAX_CHARS = 25e3;
       if (entryText.length > MAX_CHARS) {
-        showWarningModal2(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
+        showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
         return;
       }
       const message_for_nildb = {
@@ -7935,7 +7992,7 @@ if (cid) {
         runAndLogInitialQuery();
       } catch (error) {
         console.error("Failed to write data to nilDB:", error);
-        showWarningModal2(`Failed to save memory: ${error.message}`);
+        showWarningModal(`Failed to save memory: ${error.message}`);
       } finally {
         hideLoadingAnimation();
       }
@@ -7980,7 +8037,7 @@ if (cid) {
         const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
         const uuid = authData?.uuid;
         if (!uuid) {
-          showWarningModal2("You must be logged in to view memories.");
+          showWarningModal("You must be logged in to view memories.");
           return;
         }
         if (!appState.collection) {
@@ -8005,7 +8062,7 @@ if (cid) {
         displayEntries(data[dateStr]);
       } catch (error) {
         console.error("Failed to read data from nilDB:", error);
-        showWarningModal2(`Failed to fetch memories: ${error.message}`);
+        showWarningModal(`Failed to fetch memories: ${error.message}`);
       } finally {
         hideLoadingAnimation();
       }
@@ -8083,13 +8140,13 @@ if (cid) {
     document.getElementById("ask-secret-llm-btn").addEventListener("click", async () => {
       const privateReflectionInput = document.getElementById("private-reflection-input");
       if (!privateReflectionInput.value.trim() && memoryQueue.length === 0) {
-        showWarningModal2("Please provide a prompt and select at least one memory.");
+        showWarningModal("Please provide a prompt and select at least one memory.");
         return;
       } else if (!privateReflectionInput.value.trim()) {
-        showWarningModal2("Please provide a prompt.");
+        showWarningModal("Please provide a prompt.");
         return;
       } else if (memoryQueue.length === 0) {
-        showWarningModal2("Please select at least one memory.");
+        showWarningModal("Please select at least one memory.");
         return;
       }
       const messages = [];
@@ -8149,7 +8206,7 @@ ${memoryContext}`
         }
       } catch (error) {
         console.error("Error calling the API:", error);
-        showWarningModal2(`Failed to process request: ${error.message}`);
+        showWarningModal(`Failed to process request: ${error.message}`);
       } finally {
         hideLoadingAnimation();
       }
@@ -8158,63 +8215,6 @@ ${memoryContext}`
       privateReflectionInput.setAttribute("placeholder", "Let's do some private reflections...");
       renderMemoryDisplayBox();
     });
-    function showLLMResponseModal(responseContent) {
-      const template = document.getElementById("llm-response-modal-template");
-      if (!template) {
-        console.error("LLM response modal template not found!");
-        alert("Error displaying response.");
-        return;
-      }
-      const clone = template.content.cloneNode(true);
-      const modalElement = clone.querySelector(".modal");
-      const responseContentElement = clone.querySelector(".response-content");
-      const copyButton = clone.querySelector(".copy-response-btn");
-      if (!modalElement || !responseContentElement || !copyButton) {
-        console.error("Essential elements missing in LLM response modal template!");
-        return;
-      }
-      responseContentElement.textContent = responseContent;
-      document.body.appendChild(modalElement);
-      const modalInstance = new bootstrap.Modal(modalElement);
-      modalInstance.show();
-      copyButton.addEventListener("click", () => {
-        navigator.clipboard.writeText(responseContent).then(() => {
-          copyButton.textContent = "Copied!";
-          copyButton.disabled = true;
-          setTimeout(() => {
-            copyButton.textContent = "Copy Response";
-            copyButton.disabled = false;
-          }, 1500);
-        }).catch((err) => {
-          console.error("Failed to copy text:", err);
-        });
-      });
-      modalElement.addEventListener("hidden.bs.modal", () => {
-        modalElement.remove();
-      });
-    }
-    function showWarningModal2(message) {
-      const template = document.getElementById("warning-modal-template");
-      if (!template) {
-        console.error("Warning modal template not found!");
-        alert(message);
-        return;
-      }
-      const clone = template.content.cloneNode(true);
-      const modalElement = clone.querySelector(".modal");
-      const messageElement = clone.querySelector(".warning-message");
-      if (!modalElement || !messageElement) {
-        console.error("Essential elements missing in warning modal template!");
-        return;
-      }
-      messageElement.textContent = message;
-      document.body.appendChild(modalElement);
-      const modalInstance = new bootstrap.Modal(modalElement);
-      modalInstance.show();
-      modalElement.addEventListener("hidden.bs.modal", () => {
-        modalElement.remove();
-      });
-    }
     function showLoadingAnimation(message = "Loading...") {
       hideLoadingAnimation();
       const template = document.getElementById("loading-animation-template");
@@ -8302,7 +8302,6 @@ ${memoryContext}`
     return section;
   }
   function renderHistogram(data) {
-    console.log("Rendering histogram with data:", data);
     const section = ensureHistogramElements();
     const container = section.querySelector("#histogram-container");
     const loadingMsg = section.querySelector("#histogram-loading");

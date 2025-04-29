@@ -374,6 +374,90 @@ class SecretVaultWrapper {
     }
 }
 
+// Function to display a warning modal using template
+function showWarningModal(message) {
+    const template = document.getElementById('warning-modal-template');
+    if (!template) {
+         console.error('Warning modal template not found!');
+         alert(message); // Fallback
+         return;
+    }
+
+    const clone = template.content.cloneNode(true);
+    const modalElement = clone.querySelector('.modal');
+    const messageElement = clone.querySelector('.warning-message');
+
+    if (!modalElement || !messageElement) {
+         console.error('Essential elements missing in warning modal template!');
+         return;
+    }
+
+    messageElement.textContent = message;
+
+    // Append the cloned modal to the body *before* initializing
+    document.body.appendChild(modalElement);
+
+    // Show the modal
+    const modalInstance = new bootstrap.Modal(modalElement);
+    modalInstance.show();
+
+    // Remove the modal from the DOM when hidden
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        modalElement.remove();
+    });
+}
+
+// Function to display the LLM response in a modal using template
+function showLLMResponseModal(responseContent) {
+    const template = document.getElementById('llm-response-modal-template');
+    if (!template) {
+        console.error('LLM response modal template not found!');
+        alert('Error displaying response.'); // Fallback
+        return;
+    }
+
+    const clone = template.content.cloneNode(true);
+    const modalElement = clone.querySelector('.modal'); // Get the modal root element
+    const responseContentElement = clone.querySelector('.response-content');
+    const copyButton = clone.querySelector('.copy-response-btn');
+
+    if (!modalElement || !responseContentElement || !copyButton) {
+        console.error('Essential elements missing in LLM response modal template!');
+        return;
+    }
+
+    responseContentElement.textContent = responseContent;
+
+    // Append the cloned modal to the body *before* initializing
+    document.body.appendChild(modalElement);
+
+    // Show the modal using Bootstrap's JS
+    const modalInstance = new bootstrap.Modal(modalElement);
+    modalInstance.show();
+
+    // Add copy functionality
+    copyButton.addEventListener('click', () => {
+        navigator.clipboard.writeText(responseContent)
+            .then(() => {
+                copyButton.textContent = 'Copied!';
+                copyButton.disabled = true;
+                setTimeout(() => {
+                    copyButton.textContent = 'Copy Response';
+                    copyButton.disabled = false;
+                }, 1500);
+            })
+            .catch((err) => {
+                console.error('Failed to copy text:', err);
+                // Optionally show a small error message near the button
+            });
+    });
+
+    // Remove the modal from the DOM when hidden to prevent ID conflicts
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        modalElement.remove();
+    });
+}
+
 // Function to initialize application logic for reflections
 function initializeReflectionsApp() {
     // Global variables
@@ -876,90 +960,6 @@ function initializeReflectionsApp() {
         // Re-render the memory display box
         renderMemoryDisplayBox();
     });
-
-    // Function to display the LLM response in a modal using template
-    function showLLMResponseModal(responseContent) {
-        const template = document.getElementById('llm-response-modal-template');
-        if (!template) {
-            console.error('LLM response modal template not found!');
-            alert('Error displaying response.'); // Fallback
-            return;
-        }
-
-        const clone = template.content.cloneNode(true);
-        const modalElement = clone.querySelector('.modal'); // Get the modal root element
-        const responseContentElement = clone.querySelector('.response-content');
-        const copyButton = clone.querySelector('.copy-response-btn');
-
-        if (!modalElement || !responseContentElement || !copyButton) {
-            console.error('Essential elements missing in LLM response modal template!');
-            return;
-        }
-
-        responseContentElement.textContent = responseContent;
-
-        // Append the cloned modal to the body *before* initializing
-        document.body.appendChild(modalElement);
-
-        // Show the modal using Bootstrap's JS
-        const modalInstance = new bootstrap.Modal(modalElement);
-        modalInstance.show();
-
-        // Add copy functionality
-        copyButton.addEventListener('click', () => {
-            navigator.clipboard.writeText(responseContent)
-                .then(() => {
-                    copyButton.textContent = 'Copied!';
-                    copyButton.disabled = true;
-                    setTimeout(() => {
-                        copyButton.textContent = 'Copy Response';
-                        copyButton.disabled = false;
-                    }, 1500);
-                })
-                .catch((err) => {
-                    console.error('Failed to copy text:', err);
-                    // Optionally show a small error message near the button
-                });
-        });
-
-        // Remove the modal from the DOM when hidden to prevent ID conflicts
-        modalElement.addEventListener('hidden.bs.modal', () => {
-            modalElement.remove();
-        });
-    }
-
-    // Function to display a warning modal using template
-    function showWarningModal(message) {
-        const template = document.getElementById('warning-modal-template');
-        if (!template) {
-             console.error('Warning modal template not found!');
-             alert(message); // Fallback
-             return;
-        }
-
-        const clone = template.content.cloneNode(true);
-        const modalElement = clone.querySelector('.modal');
-        const messageElement = clone.querySelector('.warning-message');
-
-        if (!modalElement || !messageElement) {
-             console.error('Essential elements missing in warning modal template!');
-             return;
-        }
-
-        messageElement.textContent = message;
-
-        // Append the cloned modal to the body *before* initializing
-        document.body.appendChild(modalElement);
-
-        // Show the modal
-        const modalInstance = new bootstrap.Modal(modalElement);
-        modalInstance.show();
-
-        // Remove the modal from the DOM when hidden
-        modalElement.addEventListener('hidden.bs.modal', () => {
-            modalElement.remove();
-        });
-    }
 
     // Function to show loading animation using template
     function showLoadingAnimation(message = "Loading...") {
