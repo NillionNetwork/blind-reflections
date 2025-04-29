@@ -15438,6 +15438,7 @@ if (cid) {
         this.secretKey = await nilql.SecretKey.generate(
           this.cluster,
           this.operation,
+          null,
           this.secretKeySeed
         );
       }
@@ -16158,6 +16159,12 @@ if (cid) {
         console.error("Failed to read data by date from nilDB:", error);
         showWarningModal(`Failed to fetch memories for date: ${error.message}`);
         displayEntries(null);
+        sessionStorage.removeItem("blind_reflections_uuid");
+        sessionStorage.removeItem("blind_reflections_auth");
+        appState.collection = null;
+        setTimeout(() => {
+          location.reload();
+        }, 1e3);
       } finally {
         if (entriesLoadingSpinner2) entriesLoadingSpinner2.style.display = "none";
       }
@@ -16955,12 +16962,12 @@ ${memoryContext}`
       sessionStorage.setItem(SESSION_UUID_KEY, uuid);
       sessionStorage.setItem(SESSION_AUTH_KEY, JSON.stringify(authData));
     }
-    async function initializeCollection(uuid) {
+    async function initializeCollection(seed) {
       if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
         return;
       }
       try {
-        appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
+        appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, "store", null, seed);
         await appState.collection.init();
       } catch (error) {
         console.error("Failed to initialize collection:", error);
@@ -17041,7 +17048,7 @@ ${memoryContext}`
           return;
         }
         saveAuthData(uuid, password);
-        await initializeCollection(uuid);
+        await initializeCollection(password);
         const authModalInstance = bootstrap.Modal.getInstance(authModal);
         if (authModalInstance) {
           authModalInstance.hide();
@@ -17061,7 +17068,7 @@ ${memoryContext}`
           return;
         }
         saveAuthData(uuid, password);
-        await initializeCollection(uuid);
+        await initializeCollection(password);
         if (appState.collection) {
           if (authModalElement) {
             authModalElement.hide();
@@ -17147,10 +17154,11 @@ ${memoryContext}`
       });
     }
     const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
+    const savedPassword = sessionStorage.getItem(SESSION_PASSWORD_KEY);
     if (savedUuid) {
       (async () => {
         displayLoggedInUser(savedUuid);
-        await initializeCollection(savedUuid);
+        await initializeCollection(savedPassword);
         runAndLogInitialQuery();
       })();
     }

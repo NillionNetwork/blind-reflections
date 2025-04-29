@@ -107,6 +107,7 @@ export class NilQLWrapper {
       this.secretKey = await nilql.SecretKey.generate(
         this.cluster,
         this.operation,
+        null,
         this.secretKeySeed,
       );
     }
@@ -1016,6 +1017,12 @@ function initializeReflectionsApp() {
             console.error('Failed to read data by date from nilDB:', error);
             showWarningModal(`Failed to fetch memories for date: ${error.message}`);
             displayEntries(null);
+
+            // If we fail to fetch memories for date, log the user out
+            sessionStorage.removeItem('blind_reflections_uuid');
+            sessionStorage.removeItem('blind_reflections_auth');
+            appState.collection = null;
+            setTimeout(() => { location.reload(); }, 1000); // Give user a moment to see the warning
         } finally {
             if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none';
         }
@@ -2049,14 +2056,14 @@ function initializeAuth() {
     }
 
     // Function to initialize the collection
-    async function initializeCollection(uuid) {
+    async function initializeCollection(seed) {
         // Ensure collection is not re-initialized unnecessarily
         if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
              return;
         }
         try {
             // Store the instance in appState
-            appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
+            appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, 'store', null, seed);
             await appState.collection.init();
         } catch (error) {
             console.error("Failed to initialize collection:", error);
@@ -2168,7 +2175,7 @@ function initializeAuth() {
             saveAuthData(uuid, password);
 
             // Initialize the collection
-            await initializeCollection(uuid);
+            await initializeCollection(password);
 
             // Dynamically get the modal instance and close it
             const authModalInstance = bootstrap.Modal.getInstance(authModal);
@@ -2203,7 +2210,7 @@ function initializeAuth() {
             saveAuthData(uuid, password);
 
             // Initialize the collection
-            await initializeCollection(uuid);
+            await initializeCollection(password);
 
             // Close the modal if initialization was successful (or handle error)
              if (appState.collection) {
@@ -2329,11 +2336,12 @@ function initializeAuth() {
 
     // Check if user is already logged in on page load
     const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
+    const savedPassword = sessionStorage.getItem(SESSION_PASSWORD_KEY);
     if (savedUuid) {
         // Wrap in an async IIFE to use await for initialization
         (async () => {
             displayLoggedInUser(savedUuid);
-            await initializeCollection(savedUuid); // Ensure collection is initialized
+            await initializeCollection(savedPassword); // Ensure collection is initialized
             // Run initial query on page load if logged in
             runAndLogInitialQuery();
         })();
