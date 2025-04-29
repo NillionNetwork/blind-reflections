@@ -214,46 +214,69 @@
 
             <!-- Entries Column -->
             <div class="col-md-6">
-                <div class="card border-0 shadow-sm" id="entries-card">
+                <!-- Message shown when no date is selected -->
+                 <div class="text-center p-4 card border-0 shadow-sm" id="no-date-message">
+                     <i class="fas fa-calendar-day fs-1 mb-3 text-secondary"></i>
+                     <p>Select a date from the calendar to view or add entries</p>
+                 </div>
+
+                <!-- Card 1: Add New Entry Form (Initially hidden) -->
+                <div class="card border-0 shadow-sm mb-4" id="add-entry-card" style="display: none;">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                             <h5 class="card-title mb-0" id="selected-date-header">No date selected</h5>
-                             <!-- Spinner for loading entries -->
-                             <div class="spinner-border spinner-border-sm text-secondary ms-2" role="status" id="entries-loading-spinner" style="display: none;">
-                                 <span class="visually-hidden">Loading...</span>
+                        <!-- Dynamic Title for Add Entry -->
+                        <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Wrapper for title and spinner -->
+                            <h5 class="card-title mb-0" id="add-entry-title">Add a memory</h5>
+                             <!-- Spinner for saving -->
+                             <div class="spinner-border spinner-border-sm text-secondary ms-2" role="status" id="saving-entry-spinner" style="display: none;">
+                                 <span class="visually-hidden">Saving...</span>
                              </div>
                          </div>
 
-                        <!-- New Entry Form -->
-                        <div id="entry-form-container" class="mb-4" style="display: none;">
+                        <!-- Content moved from #entry-form-container -->
+                        <div id="entry-form-content">
                             <div class="mb-3">
-                                <label for="entry-text" class="form-label">Add a memory</label>
-                                <!-- Wrapper for Textarea and Mic Button -->
                                 <div class="position-relative">
-                                    <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..." style="padding-right: 40px;"></textarea>
+                                    <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..." style="padding-right: 40px;" aria-label="Memory text input"></textarea>
                                     <button id="entry-mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation" style="position: absolute; right: 5px; top: 5px; bottom: 5px; width: 30px; display: flex; align-items: center; justify-content: center; border: none;">
                                          <i id="entry-mic-icon" class="fas fa-microphone"></i>
                                     </button>
                                     <span id="entry-speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
                                 </div>
                             </div>
+                            <div class="mb-3 position-relative">
+                                <input type="text" class="form-control form-control-sm" id="entry-tags" placeholder="Tags: e.g., work, idea (comma-separated)" style="padding-right: 30px;">
+                                <i class="fas fa-info-circle text-muted"
+                                   style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: help;"
+                                   data-bs-toggle="tooltip"
+                                   data-bs-placement="top"
+                                   title="Tags are metadata, use them with caution."></i>
+                            </div>
                             <button type="button" class="btn btn-accent" id="save-entry-btn"><i class="fas fa-save me-1"></i>Save Memory</button>
                         </div>
+                    </div>
+                </div>
 
-                        <!-- Entries List -->
-                        <div id="entries-container">
-                            <div class="text-center p-4" id="no-date-message">
-                                <i class="fas fa-calendar-day fs-1 mb-3 text-secondary"></i>
-                                <p>Select a date from the calendar to view or add entries</p>
+                <!-- Card 2: Retrieved Entries List (Initially hidden) -->
+                <div class="card border-0 shadow-sm" id="retrieved-entries-card" style="display: none;">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Wrapper for title and spinner -->
+                            <h5 class="card-title mb-0" id="retrieved-entries-title">Memories</h5> <!-- Dynamic Title -->
+                            <!-- Spinner moved here -->
+                            <div class="spinner-border spinner-border-sm text-secondary ms-2" role="status" id="entries-loading-spinner" style="display: none;">
+                                <span class="visually-hidden">Loading...</span>
                             </div>
-                            <div id="no-entries-message" style="display: none;">
-                                <div class="text-center p-4">
-                                    <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
-                                    <p>No memories for this date yet. Write your first memory!</p>
-                                </div>
-                            </div>
-                            <div id="entries-list" class="entries-scrollable"></div>
                         </div>
+
+                        <!-- Message shown when no entries exist for the selected date -->
+                        <div id="no-entries-message" style="display: none;">
+                            <div class="text-center p-4">
+                                <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
+                                <p>No memories for this date yet. Write your first memory!</p>
+                            </div>
+                        </div>
+
+                        <!-- List where entries will be displayed -->
+                        <div id="entries-list" class="entries-scrollable"></div>
                     </div>
                 </div>
             </div>

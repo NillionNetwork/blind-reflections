@@ -7514,8 +7514,8 @@ if (cid) {
       }
     ]
   };
-  var SCHEMA = "fa800faa-c7ec-4a09-bf76-6ec768ee6299";
-  var AGGREGATION = "87b54dc5-4229-455f-9d60-2c6cf315a74a";
+  var SCHEMA = "7d2d9ded-20b9-4e84-9498-ddeb822f7fd5";
+  var AGGREGATION = "2bc8b63d-083f-438d-bb27-7c673f9ce02d";
   var NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
   var NIL_API_TOKEN = "Nillion2025";
   var DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
@@ -7960,6 +7960,8 @@ if (cid) {
       }
       const entryTextArea2 = document.getElementById("entry-text");
       const entryText = entryTextArea2.value.trim();
+      const tagsInput = document.getElementById("entry-tags");
+      const tagsText = tagsInput.value.trim();
       if (!entryText) {
         showWarningModal("Please enter some text for your reflection.");
         return;
@@ -7969,15 +7971,16 @@ if (cid) {
         showWarningModal(`Your entry is too long. Please limit your reflection to approximately 5000 words (${MAX_CHARS} characters).`);
         return;
       }
+      const tagsArray = tagsText.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "");
       const message_for_nildb = {
         uuid,
         date: currentSelectedDate,
-        entry: entryText
+        entry: entryText,
+        tags: tagsArray
       };
-      if (saveEntryBtn) {
-        saveEntryBtn.disabled = true;
-        saveEntryBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
-      }
+      const savingSpinner = document.getElementById("saving-entry-spinner");
+      if (saveEntryBtn) saveEntryBtn.disabled = true;
+      if (savingSpinner) savingSpinner.style.display = "inline-block";
       try {
         if (!appState.collection) {
           throw new Error("Collection not initialized. Please log in.");
@@ -7990,9 +7993,10 @@ if (cid) {
         if (!data[currentSelectedDate]) {
           data[currentSelectedDate] = [];
         }
-        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp });
+        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray });
         saveData(data);
         entryTextArea2.value = "";
+        tagsInput.value = "";
         displayEntries(data[currentSelectedDate]);
         markDateWithEntriesHelper(currentSelectedDate);
         const entriesList = document.getElementById("entries-list");
@@ -8004,10 +8008,8 @@ if (cid) {
         console.error("Failed to write data to nilDB:", error);
         showWarningModal(`Failed to save memory: ${error.message}`);
       } finally {
-        if (saveEntryBtn) {
-          saveEntryBtn.disabled = false;
-          saveEntryBtn.innerHTML = saveEntryBtnOriginalContent;
-        }
+        if (saveEntryBtn) saveEntryBtn.disabled = false;
+        if (savingSpinner) savingSpinner.style.display = "none";
       }
     }
     function markDatesWithEntries() {
@@ -8042,8 +8044,17 @@ if (cid) {
       const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
       if (dateEl) dateEl.classList.add("fc-day-selected");
       currentSelectedDate = dateStr;
-      document.getElementById("selected-date-header").textContent = formatDisplayDate(dateStr);
-      document.getElementById("entry-form-container").style.display = "block";
+      const formattedDate = formatDisplayDate(dateStr);
+      const addTitleEl = document.getElementById("add-entry-title");
+      if (addTitleEl) {
+        addTitleEl.textContent = `Add a memory for ${formattedDate}`;
+      }
+      const retrievedTitleEl = document.getElementById("retrieved-entries-title");
+      if (retrievedTitleEl) {
+        retrievedTitleEl.textContent = `Memories for ${formattedDate}`;
+      }
+      document.getElementById("add-entry-card").style.display = "block";
+      document.getElementById("retrieved-entries-card").style.display = "block";
       document.getElementById("no-date-message").style.display = "none";
       if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = "inline-block";
       try {
@@ -8051,6 +8062,11 @@ if (cid) {
         const uuid = authData?.uuid;
         if (!uuid) {
           showWarningModal("You must be logged in to view memories.");
+          document.getElementById("add-entry-card").style.display = "none";
+          document.getElementById("retrieved-entries-card").style.display = "none";
+          document.getElementById("no-date-message").style.display = "block";
+          currentSelectedDate = null;
+          if (dateEl) dateEl.classList.remove("fc-day-selected");
           return;
         }
         if (!appState.collection) {
@@ -8063,7 +8079,8 @@ if (cid) {
             return nodeArray.map((entry) => ({
               id: entry._id,
               timestamp: entry._created,
-              text: entry.entry
+              text: entry.entry,
+              tags: entry.tags
             }));
           }
           return [];
@@ -8085,8 +8102,13 @@ if (cid) {
     function displayEntries(entries) {
       const entriesListEl = document.getElementById("entries-list");
       const noEntriesMessageEl = document.getElementById("no-entries-message");
-      const memoryDisplayBox = document.getElementById("memory-display-box");
+      const retrievedEntriesCard = document.getElementById("retrieved-entries-card");
+      if (!entriesListEl || !noEntriesMessageEl || !retrievedEntriesCard) {
+        console.error("Required elements for displaying entries are missing.");
+        return;
+      }
       entriesListEl.innerHTML = "";
+      retrievedEntriesCard.style.display = "block";
       if (!Array.isArray(entries)) {
         console.error("displayEntries received non-array data:", entries);
         noEntriesMessageEl.innerHTML = `
@@ -8096,6 +8118,7 @@ if (cid) {
                  </div>
              `;
         noEntriesMessageEl.style.display = "block";
+        entriesListEl.style.display = "none";
         return;
       }
       if (entries.length === 0) {
@@ -8106,9 +8129,11 @@ if (cid) {
                  </div>
              `;
         noEntriesMessageEl.style.display = "block";
+        entriesListEl.style.display = "none";
         return;
       }
       noEntriesMessageEl.style.display = "none";
+      entriesListEl.style.display = "block";
       const sortedEntries = [...entries].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       sortedEntries.forEach((entry) => {
         const entryCard = document.createElement("div");
@@ -8131,8 +8156,23 @@ if (cid) {
                         <span class="entry-timestamp">${formattedDate} at ${formattedTime}</span>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
+                    <!-- Container for Tags -->
+                    <div class="entry-tags-container mt-2">
+                        <!-- Tags will be injected here by JS -->
+                    </div>
                 </div>
             `;
+        if (Array.isArray(entry.tags) && entry.tags.length > 0) {
+          const tagsContainer = entryCard.querySelector(".entry-tags-container");
+          if (tagsContainer) {
+            entry.tags.forEach((tag) => {
+              const tagElement = document.createElement("span");
+              tagElement.className = "entry-tag";
+              tagElement.textContent = tag;
+              tagsContainer.appendChild(tagElement);
+            });
+          }
+        }
         entryCard.addEventListener("click", () => {
           const memoryText = entry.text;
           const memoryDate = currentSelectedDate;

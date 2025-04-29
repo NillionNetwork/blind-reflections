@@ -45,10 +45,14 @@ const NILDB = {
 };
 
 // In the clear
-const SCHEMA = 'fa800faa-c7ec-4a09-bf76-6ec768ee6299';
-const AGGREGATION = '87b54dc5-4229-455f-9d60-2c6cf315a74a';
+const SCHEMA = '7d2d9ded-20b9-4e84-9498-ddeb822f7fd5';
+const AGGREGATION = '2bc8b63d-083f-438d-bb27-7c673f9ce02d';
 
-// With shares
+// In the clear, no tags
+// const SCHEMA = 'fa800faa-c7ec-4a09-bf76-6ec768ee6299';
+// const AGGREGATION = '87b54dc5-4229-455f-9d60-2c6cf315a74a';
+
+// With shares, no tags
 // const SCHEMA = 'd6381b22-a274-44f5-b1f4-0cd03526ed03';
 // const AGGREGATION = 'eae83257-c0f4-4752-9042-0bc83c344b8b';
 
@@ -593,6 +597,8 @@ function initializeReflectionsApp() {
 
         const entryTextArea = document.getElementById('entry-text');
         const entryText = entryTextArea.value.trim();
+        const tagsInput = document.getElementById('entry-tags'); // Get tags input
+        const tagsText = tagsInput.value.trim(); // Get tags text
 
         // Check if entry is empty
         if (!entryText) {
@@ -607,18 +613,24 @@ function initializeReflectionsApp() {
             return;
         }
 
+        // Process tags: split by comma, trim whitespace, remove empty tags
+        const tagsArray = tagsText
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag !== '');
+
         // Save entry to nilDB
         const message_for_nildb = {
             uuid: uuid,
             date: currentSelectedDate,
             entry: entryText,
+            tags: tagsArray
         };
 
-        // Show loading state on button
-        if (saveEntryBtn) {
-            saveEntryBtn.disabled = true;
-            saveEntryBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
-        }
+        // Show loading state
+        const savingSpinner = document.getElementById('saving-entry-spinner');
+        if (saveEntryBtn) saveEntryBtn.disabled = true;
+        if (savingSpinner) savingSpinner.style.display = 'inline-block';
 
         try {
             if (!appState.collection) {
@@ -635,11 +647,12 @@ function initializeReflectionsApp() {
                 data[currentSelectedDate] = [];
             }
 
-            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp });
+            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray }); // Add tags here too
             saveData(data);
 
-            // Clear the input field
+            // Clear the input fields
             entryTextArea.value = '';
+            tagsInput.value = ''; // Clear tags input
 
             // Refresh entries display
             displayEntries(data[currentSelectedDate]);
@@ -660,11 +673,9 @@ function initializeReflectionsApp() {
             console.error('Failed to write data to nilDB:', error);
             showWarningModal(`Failed to save memory: ${error.message}`);
         } finally {
-            // Restore button state
-            if (saveEntryBtn) {
-                saveEntryBtn.disabled = false;
-                saveEntryBtn.innerHTML = saveEntryBtnOriginalContent;
-            }
+            // Restore button state and hide spinner
+            if (saveEntryBtn) saveEntryBtn.disabled = false;
+            if (savingSpinner) savingSpinner.style.display = 'none';
         }
     }
 
@@ -713,12 +724,23 @@ function initializeReflectionsApp() {
         if (dateEl) dateEl.classList.add('fc-day-selected');
 
         currentSelectedDate = dateStr;
+        const formattedDate = formatDisplayDate(dateStr);
 
-        // Update header with selected date
-        document.getElementById('selected-date-header').textContent = formatDisplayDate(dateStr);
+        // Update title of the Add Entry card
+        const addTitleEl = document.getElementById('add-entry-title');
+        if (addTitleEl) {
+            addTitleEl.textContent = `Add a memory for ${formattedDate}`;
+        }
 
-        // Show entry form
-        document.getElementById('entry-form-container').style.display = 'block';
+        // Update title of the retrieved entries card
+        const retrievedTitleEl = document.getElementById('retrieved-entries-title');
+        if (retrievedTitleEl) {
+            retrievedTitleEl.textContent = `Memories for ${formattedDate}`;
+        }
+
+        // Show the Add Entry and Retrieved Entries cards
+        document.getElementById('add-entry-card').style.display = 'block';
+        document.getElementById('retrieved-entries-card').style.display = 'block';
 
         // Hide "no date selected" message
         document.getElementById('no-date-message').style.display = 'none';
@@ -733,6 +755,12 @@ function initializeReflectionsApp() {
 
             if (!uuid) {
                 showWarningModal('You must be logged in to view memories.');
+                 // Hide cards if not logged in?
+                 document.getElementById('add-entry-card').style.display = 'none';
+                 document.getElementById('retrieved-entries-card').style.display = 'none';
+                 document.getElementById('no-date-message').style.display = 'block'; // Show no-date message again?
+                 currentSelectedDate = null; // Reset selection
+                 if (dateEl) dateEl.classList.remove('fc-day-selected');
                 return;
             }
 
@@ -752,6 +780,7 @@ function initializeReflectionsApp() {
                         id: entry._id,
                         timestamp: entry._created,
                         text: entry.entry,
+                        tags: entry.tags,
                     }));
                 }
                 return []; // Return an empty array if nodeArray is not an array
@@ -769,7 +798,7 @@ function initializeReflectionsApp() {
         } catch (error) {
             console.error('Failed to read data from nilDB:', error);
             showWarningModal(`Failed to fetch memories: ${error.message}`);
-            // Ensure entries display shows error state
+            // Ensure entries display shows error state in the correct card
             displayEntries(null); // Pass null to trigger error display in displayEntries
         } finally {
             // Hide loading animation
@@ -780,18 +809,27 @@ function initializeReflectionsApp() {
     // Global variable to store the memory queue
     const memoryQueue = [];
 
-    // Function to display entries
+    // Function to display entries in the Retrieved Memories card
     function displayEntries(entries) {
         const entriesListEl = document.getElementById('entries-list');
         const noEntriesMessageEl = document.getElementById('no-entries-message');
-        const memoryDisplayBox = document.getElementById('memory-display-box');
+        const retrievedEntriesCard = document.getElementById('retrieved-entries-card'); // Reference the card
+        // const memoryDisplayBox = document.getElementById('memory-display-box'); // Not directly modified here
 
-        entriesListEl.innerHTML = '';
+        if (!entriesListEl || !noEntriesMessageEl || !retrievedEntriesCard) {
+            console.error("Required elements for displaying entries are missing.");
+            return;
+        }
+
+        entriesListEl.innerHTML = ''; // Clear previous entries
+
+        // Ensure the retrieved entries card is visible if we might show entries or the 'no entries' message
+        retrievedEntriesCard.style.display = 'block';
 
         // Ensure entries is a valid array before proceeding
         if (!Array.isArray(entries)) {
             console.error("displayEntries received non-array data:", entries);
-             // More user-friendly error display
+             // Show error message within the retrieved entries card
              noEntriesMessageEl.innerHTML = `
                  <div class="text-center p-4">
                      <i class="fas fa-exclamation-triangle fs-1 mb-3 text-warning"></i>
@@ -799,11 +837,12 @@ function initializeReflectionsApp() {
                  </div>
              `;
             noEntriesMessageEl.style.display = 'block';
+            entriesListEl.style.display = 'none'; // Hide the list itself
             return;
         }
 
         if (entries.length === 0) {
-            // More engaging empty state message
+            // Show 'no entries' message within the retrieved entries card
             noEntriesMessageEl.innerHTML = `
                  <div class="text-center p-4">
                      <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
@@ -811,11 +850,13 @@ function initializeReflectionsApp() {
                  </div>
              `;
             noEntriesMessageEl.style.display = 'block';
+            entriesListEl.style.display = 'none'; // Hide the list itself
             return;
         }
 
-        // If we have entries, ensure the empty message is hidden
+        // If we have entries, ensure the 'no entries' message is hidden and list is shown
         noEntriesMessageEl.style.display = 'none';
+        entriesListEl.style.display = 'block'; // Ensure list is visible
 
         // Create a copy before sorting to avoid modifying the original array passed in
         const sortedEntries = [...entries].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -844,8 +885,25 @@ function initializeReflectionsApp() {
                         <span class="entry-timestamp">${formattedDate} at ${formattedTime}</span>
                     </div>
                     <p class="card-text entry-text">${entry.text}</p>
+                    <!-- Container for Tags -->
+                    <div class="entry-tags-container mt-2">
+                        <!-- Tags will be injected here by JS -->
+                    </div>
                 </div>
             `;
+
+            // Inject tags if they exist
+            if (Array.isArray(entry.tags) && entry.tags.length > 0) {
+                const tagsContainer = entryCard.querySelector('.entry-tags-container');
+                if (tagsContainer) {
+                    entry.tags.forEach(tag => {
+                        const tagElement = document.createElement('span');
+                        tagElement.className = 'entry-tag';
+                        tagElement.textContent = tag;
+                        tagsContainer.appendChild(tagElement);
+                    });
+                }
+            }
 
             // Add click event to append the memory to the memory display box
             entryCard.addEventListener('click', () => {

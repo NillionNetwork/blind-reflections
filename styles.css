@@ -666,3 +666,24 @@ header {
 .mic-control-button i.text-danger:hover {
      color: var(--bs-danger) !important;
 }
+
+/* Entry Tag Styles */
+.entry-tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px; /* Spacing between tags */
+}
+
+.entry-tag {
+    background-color: var(--accent-color); /* Teal background */
+    color: white; /* White text for contrast */
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Adjust text color for light theme if needed for better contrast */
+/* [data-bs-theme="light"] .entry-tag { */
+/*    color: #212529; */ /* Example: Dark text on light theme */
+/* } */
