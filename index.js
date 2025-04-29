@@ -1,6 +1,8 @@
 import { Buffer } from 'buffer';
 import { v4 as uuidv4 } from 'uuid';
 import { createJWT, ES256KSigner } from 'did-jwt';
+import { nilql } from "@nillion/nilql";
+// import { secretvaults } from "secretvaults";
 
 window.Buffer = Buffer; // Required for in-browser use of eciesjs.
 
@@ -44,22 +46,178 @@ const NILDB = {
     ],
 };
 
-// In the clear
-const SCHEMA = '7d2d9ded-20b9-4e84-9498-ddeb822f7fd5';
-const AGGREGATION = '2bc8b63d-083f-438d-bb27-7c673f9ce02d';
-
-// In the clear, no tags
-// const SCHEMA = 'fa800faa-c7ec-4a09-bf76-6ec768ee6299';
-// const AGGREGATION = '87b54dc5-4229-455f-9d60-2c6cf315a74a';
-
-// With shares, no tags
-// const SCHEMA = 'd6381b22-a274-44f5-b1f4-0cd03526ed03';
-// const AGGREGATION = 'eae83257-c0f4-4752-9042-0bc83c344b8b';
+// The `memory` entry is stored with shares
+const SCHEMA = '35969a5c-a698-4110-bd18-921078bf7759';
+const AGGREGATION = '1749d382-356b-4314-80c0-28f7075b4359';
 
 // --- Constants --- (Moved Bearer token here)
 const NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
 const NIL_API_TOKEN = "Nillion2025"; // TODO: Secure this token
 const DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
+
+
+// Define an enum for key types
+export const KeyType = {
+  CLUSTER: "cluster",
+  SECRET: "secret",
+};
+
+// Define an enum for operations types
+export const OperationType = {
+  STORE: "store",
+  SUM: "sum",
+  MATCH: "match",
+};
+
+/**
+ * NilQLWrapper provides encryption and decryption of data using Nillion's technology.
+ * It generates and manages secret keys, splits data into shares when encrypting,
+ * and recombines shares when decrypting.
+ *
+ * @example
+ * const wrapper = new NilQLWrapper(cluster);
+ * await wrapper.init();
+ * const shares = await wrapper.encrypt(sensitiveData);
+ */
+export class NilQLWrapper {
+  constructor(
+    cluster,
+    operation = OperationType.STORE,
+    secretKey = null, // option to pass in your own secret key
+    secretKeySeed = null,
+    keyType = KeyType.CLUSTER,
+  ) {
+    this.cluster = cluster;
+    this.secretKey = secretKey;
+    this.secretKeySeed = secretKeySeed;
+    this.operation = {
+      [operation]: true,
+    };
+    this.keyType = keyType;
+  }
+
+  /**
+   * Initializes the NilQLWrapper by generating and storing a secret key
+   * for the cluster. This must be called before any encryption/decryption operations.
+   * @returns {Promise<void>}
+   */
+  async init() {
+    // Create secretKey from secretKeySeed, if provided
+    if (this.secretKeySeed && this.secretKey === null) {
+      this.secretKey = await nilql.SecretKey.generate(
+        this.cluster,
+        this.operation,
+        this.secretKeySeed,
+      );
+    }
+
+    if (this.secretKey === null) {
+      switch (this.keyType) {
+        case KeyType.SECRET:
+          this.secretKey = await nilql.SecretKey.generate(
+            this.cluster,
+            this.operation,
+          );
+          break;
+        case KeyType.CLUSTER:
+          this.secretKey = await nilql.ClusterKey.generate(
+            this.cluster,
+            this.operation,
+          );
+          break;
+        default:
+          throw new Error("Unsupported key type");
+      }
+    }
+  }
+
+  /**
+   * Encrypts data using the initialized secret key
+   * @param {any} data - The data to encrypt
+   * @throws {Error} If NilQLWrapper hasn't been initialized
+   * @returns {Promise<Array>} Array of encrypted shares
+   */
+  async encrypt(data) {
+    if (!this.secretKey) {
+      throw new Error("NilQLWrapper not initialized. Call init() first.");
+    }
+    const shares = await nilql.encrypt(this.secretKey, data);
+    return shares;
+  }
+
+  /**
+   * Decrypts data using the initialized secret key and provided shares
+   * @param {Array} shares - Array of encrypted shares to decrypt
+   * @throws {Error} If NilQLWrapper hasn't been initialized
+   * @returns {Promise<any>} The decrypted data
+   */
+  async decrypt(shares) {
+    if (!this.secretKey) {
+      throw new Error("NilQLWrapper not initialized. Call init() first.");
+    }
+    const decryptedData = await nilql.decrypt(this.secretKey, shares);
+    return decryptedData;
+  }
+
+  /**
+   * Recursively encrypts all values marked with %allot in the given data object
+   * and prepares it for secure processing.
+   *
+   * - Traverses the entire object structure, handling nested objects at any depth.
+   * - Encrypts values associated with the %allot key using nilql.encrypt().
+   * - Preserves non-%allot values and maintains the original object structure.
+   * - Calls nilql.allot() on the fully processed data before returning.
+   *
+   * @param {object} data - The input object containing fields marked with %allot for encryption.
+   * @throws {Error} If NilQLWrapper has not been initialized with a secret key.
+   * @returns {Promise<object>} The processed object with encrypted %allot values.
+   */
+  async prepareAndAllot(data) {
+    if (!this.secretKey) {
+      throw new Error("NilQLWrapper not initialized. Call init() first.");
+    }
+
+    const encryptDeep = async (obj) => {
+      if (typeof obj !== "object" || obj === null) {
+        return obj;
+      }
+
+      const encrypted = Array.isArray(obj) ? [] : {};
+
+      for (const [key, value] of Object.entries(obj)) {
+        if (typeof value === "object" && value !== null) {
+          if ("%allot" in value) {
+            encrypted[key] = {
+              "%allot": await nilql.encrypt(this.secretKey, value["%allot"]),
+            };
+          } else {
+            encrypted[key] = await encryptDeep(value); // Recurse into nested objects
+          }
+        } else {
+          encrypted[key] = value;
+        }
+      }
+      return encrypted;
+    };
+
+    const encryptedData = await encryptDeep(data);
+    return nilql.allot(encryptedData);
+  }
+
+  /**
+   * Recombines encrypted shares back into original data structure
+   * @param {Array} shares - Array of shares from prepareAndAllot
+   * @throws {Error} If NilQLWrapper hasn't been initialized
+   * @returns {Promise<object>} Original data structure with decrypted values
+   */
+  async unify(shares) {
+    if (!this.secretKey) {
+      throw new Error("NilQLWrapper not initialized. Call init() first.");
+    }
+    const unifiedResult = await nilql.unify(this.secretKey, shares);
+    return unifiedResult;
+  }
+}
 
 class SecretVaultWrapper {
     constructor(
@@ -67,14 +225,19 @@ class SecretVaultWrapper {
         credentials,
         schemaId = null,
         operation = 'store',
-        tokenExpirySeconds = 36000000
+        secretKey = null,
+        secretKeySeed = null,
+        tokenExpirySeconds = 36000000,
     ) {
         this.nodes = nodes;
         this.nodesJwt = null;
         this.credentials = credentials;
         this.schemaId = schemaId;
         this.operation = operation;
+        this.secretKey = secretKey;
+        this.secretKeySeed = secretKeySeed;
         this.tokenExpirySeconds = tokenExpirySeconds;
+        this.nilqlWrapper = null;
     }
 
     async init() {
@@ -85,6 +248,18 @@ class SecretVaultWrapper {
             }))
         );
         this.nodesJwt = nodeConfigs;
+        // Determine keyType
+        const keyType =
+          this.secretKey || this.secretKeySeed ? KeyType.SECRET : KeyType.CLUSTER;
+        this.nilqlWrapper = new NilQLWrapper(
+          { nodes: this.nodes },
+          this.operation,
+          this.secretKey,
+          this.secretKeySeed,
+          keyType,
+        );
+        await this.nilqlWrapper.init();
+        return this.nilqlWrapper;
     }
 
     setSchemaId(schemaId, operation = this.operation) {
@@ -161,6 +336,21 @@ class SecretVaultWrapper {
       }
     }
 
+    /**
+     * Transforms data by encrypting specified fields across all nodes
+     * @param {object|array} data - Data to transform
+     * @param {array} fieldsToEncrypt - Fields to encrypt
+     * @returns {Promise<array>} Array of transformed data for each node
+     */
+    async allotData(data) {
+      const encryptedRecords = [];
+      for (const item of data) {
+        const encryptedItem = await this.nilqlWrapper.prepareAndAllot(item);
+        encryptedRecords.push(encryptedItem);
+      }
+      return encryptedRecords;
+    }
+
     async flushData() {
       const results = [];
       for (const node of this.nodes) {
@@ -177,145 +367,126 @@ class SecretVaultWrapper {
       return results;
     }
 
-    async getSchemas() {
-      const results = [];
-      for (const node of this.nodes) {
-        const jwt = await this.generateNodeToken(node.did);
-        try {
-          const result = await this.makeRequest(
-            node.url,
-            'schemas',
-            jwt,
-            {},
-            'GET'
-          );
-          results.push({ ...result, node });
-        } catch (error) {
-          console.error(
-            `❌ Failed to get schemas from ${node.url}:`,
-            error.message
-          );
-          results.push({ error, node });
-        }
-      }
-      return results;
-    }
-
-    async createSchema(schema, schemaName, schemaId = null) {
-      if (!schemaId) {
-        schemaId = uuidv4();
-      }
-      const schemaPayload = {
-        _id: schemaId,
-        name: schemaName,
-        schema,
-      };
-      const results = [];
-      for (const node of this.nodes) {
-        const jwt = await this.generateNodeToken(node.did);
-        try {
-          const result = await this.makeRequest(
-            node.url,
-            'schemas',
-            jwt,
-            schemaPayload
-          );
-          results.push({
-            ...result,
-            node,
-            schemaId,
-            name: schemaName,
-          });
-        } catch (error) {
-          console.error(
-            `❌ Error while creating schema on ${node.url}:`,
-            error.message
-          );
-          results.push({ error, node });
-        }
-      }
-      return results;
-    }
-
     async writeToNodes(data) {
-      // Add an "_id" field to each record if it doesn't exist.
+      // add a _id field to each record if it doesn't exist
       const idData = data.map((record) => {
         if (!record._id) {
           return { ...record, _id: uuidv4() };
         }
         return record;
       });
-      const results = [];
+      const transformedData = await this.allotData(idData);
 
-      for (let i = 0; i < this.nodes.length; i++) {
-        const node = this.nodes[i];
+      const writeDataToNode = async (node, index) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
+          const nodeData = transformedData.map((encryptedShares) =>
+            encryptedShares.length !== this.nodes.length
+              ? encryptedShares[0]
+              : encryptedShares[index],
+          );
           const payload = {
             schema: this.schemaId,
-            data: idData,
+            data: nodeData,
           };
+
           const result = await this.makeRequest(
             node.url,
-            'data/create',
+            "data/create",
             jwt,
-            payload
+            payload,
           );
-
-          results.push({
-            ...result,
-            node,
-            schemaId: this.schemaId,
-          });
+          return { result, node };
         } catch (error) {
           console.error(`❌ Failed to write to ${node.url}:`, error.message);
-          results.push({ node, error });
+          throw { error, node };
         }
-      }
+      };
 
+      const settledResults = await Promise.allSettled(
+        this.nodes.map((node, index) => writeDataToNode(node, index)),
+      );
+
+      const results = settledResults.map((settledResult) => {
+        if (settledResult.status === "fulfilled") {
+          return {
+            ...settledResult.value.result,
+            node: settledResult.value.node,
+            schemaId: this.schemaId,
+          };
+        }
+        if (settledResult.status === "rejected") {
+          return {
+            error: settledResult.reason.error,
+            node: settledResult.reason.node,
+          };
+        }
+      });
+      console.log('results', JSON.stringify(results, null, 2));
       return results;
     }
 
     async readFromNodes(filter = {}) {
-      const results = [];
+      const payload = { schema: this.schemaId, filter };
 
-      for (const node of this.nodes) {
+      const readDataFromNode = async (node) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
-          const payload = { schema: this.schemaId, filter };
           const result = await this.makeRequest(
             node.url,
-            'data/read',
+            "data/read",
             jwt,
-            payload
+            payload,
           );
-          results.push({ ...result, node });
+          return { result, node };
         } catch (error) {
           console.error(`❌ Failed to read from ${node.url}:`, error.message);
-          results.push({ error, node });
+          throw { error, node };
         }
-      }
+      };
+      console.log('reading from nodes', this.nodes);
+      const settledResults = await Promise.allSettled(
+        this.nodes.map((node) => readDataFromNode(node)),
+      );
+      console.log('settledResults', JSON.stringify(settledResults, null, 2));
+      const results = settledResults.map((settledResult) => {
+        if (settledResult.status === "fulfilled") {
+          return {
+            ...settledResult.value.result,
+            node: settledResult.value.node,
+          };
+        }
+        if (settledResult.status === "rejected") {
+          return {
+            error: settledResult.reason.error,
+            node: settledResult.reason.node,
+          };
+        }
+      });
+      console.log('results', JSON.stringify(results, null, 2));
 
       // Group records across nodes by _id
       const recordGroups = results.reduce((acc, nodeResult) => {
-        nodeResult.data.forEach((record) => {
-          const existingGroup = acc.find((group) =>
-            group.shares.some((share) => share._id === record._id)
-          );
-          if (existingGroup) {
-            existingGroup.shares.push(record);
-          } else {
-            acc.push({ shares: [record], recordIndex: record._id });
+        if (nodeResult.data) {
+          for (const record of nodeResult.data) {
+            const existingGroup = acc.find((group) =>
+              group.shares.some((share) => share._id === record._id),
+            );
+            if (existingGroup) {
+              existingGroup.shares.push(record);
+            } else {
+              acc.push({ shares: [record], recordIndex: record._id });
+            }
           }
-        });
+        }
         return acc;
       }, []);
 
       const recombinedRecords = await Promise.all(
         recordGroups.map(async (record) => {
-          const recombined = record.shares;
+          const recombined = await this.nilqlWrapper.unify(record.shares);
           return recombined;
-        })
+        }),
       );
       return recombinedRecords;
     }
@@ -624,7 +795,7 @@ function initializeReflectionsApp() {
         const message_for_nildb = {
             uuid: uuid,
             date: currentSelectedDate,
-            entry: entryText,
+            entry: { "%allot": entryText },
             tags: tagsArray
         };
 
@@ -780,6 +951,7 @@ function initializeReflectionsApp() {
             console.log('Data read from nilDB (by date):', dataReadFromNilDB);
 
             const entries = processFetchedEntries(dataReadFromNilDB);
+            console.log('Entries:', entries);
 
             // Update local storage (optional, maybe only cache date-based fetches?)
             const data = loadData();
@@ -906,20 +1078,15 @@ function initializeReflectionsApp() {
 
     // Helper function to process fetched entries (avoids duplication)
     function processFetchedEntries(dataReadFromNilDB) {
-        const entries = dataReadFromNilDB.flatMap(nodeArray => {
-            if (Array.isArray(nodeArray)) {
-                return nodeArray.map(entry => ({
-                    id: entry._id,
-                    timestamp: entry._created, // Use _created as timestamp
-                    text: entry.entry,
-                    tags: entry.tags,
-                    date: entry.date // Add the reflection date field
-                }));
-            }
-            return [];
-        });
-        console.log('Processed entries:', entries);
-        return entries;
+        return dataReadFromNilDB
+            .filter(entry => entry && typeof entry === 'object' && entry._id)
+            .map(entry => ({
+                id: entry._id,
+                timestamp: entry._created,
+                text: entry.entry,
+                tags: entry.tags,
+                date: entry.date
+            }));
     }
 
     // Global variable to store the memory queue

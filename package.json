@@ -1,27 +1,25 @@
 {
   "name": "blind-reflections",
   "version": "0.1.0",
-  "description": "Small browser-based bulletin board that leverages public-key cryptography (for encryption and signing) and nilDB (for storage and communication).",
+  "description": "Elevate your introspection with Blind Reflections, where your deepest thoughts are securely captured in SecretVault, then privately explored with SecretLLM's privacy-preserving insights. Reflect freely, knowing your memories remain unseen, even by the AI itself.",
+  "author": "Dimitris Mouris",
   "license": "MIT",
-  "homepage": "https://github.com/nillionnetwork/nildb-browser-demos",
+  "homepage": "https://github.com/nillionnetwork/blind-reflections",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nillionnetwork/nildb-browser-demos"
+    "url": "git+https://github.com/nillionnetwork/blind-reflections"
   },
-  "bugs": "https://github.com/NillionNetwork/nildb-browser-demos/issues",
   "engines": {
     "node": ">= 14.0.0",
     "npm": ">= 6.0.0"
   },
   "dependencies": {
-    "@noble/hashes": "^1.7.2",
-    "@noble/secp256k1": "^2.2.3",
+    "@nillion/nilql": "0.0.0-alpha.14",
     "buffer": "^6.0.3",
-    "eciesjs": "^0.4.14",
-    "secretvaults": "^0.0.0-alpha.1"
+    "did-jwt": "^8.0.6",
+    "uuid": "^11.0.5"
   },
   "devDependencies": {
-    "esbuild": "0.25.3",
-    "esbuild-css-modules-plugin": "^3.1.4"
+    "esbuild": "0.25.3"
   }
 }

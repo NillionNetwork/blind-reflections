@@ -4,10 +4,6 @@
 
 *   [ ] **Entry Deleting:** Add a "Delete" icon/button to displayed entry cards. Add a confirmation step (e.g., modal) before deleting. Use the existing `deleteDataFromNodes` method in `SecretVaultWrapper`. Update local storage (`saveData`) and refresh the UI (`displayEntries`, `markDatesWithEntriesHelper`, `runAndLogInitialQuery` for histogram) after successful deletion.
 
-*   [ ] **Tags/Categories:**
-    *   [x] Add an input field (e.g., comma-separated tags) to the "Add a memory" form. Modify the nilDB schema (`message_for_nildb`) to include a `tags` (array of strings). Store tags data when saving entries (`saveEntry`). Display tags/category on entry cards with white or black font (based on the them) inside a teal box.
-    *   [ ] Add UI elements (e.g., tag list) to filter displayed entries by tag/category.
-
 *   [ ] **Mood Tracking:**
     *   [ ] Add a simple mood selector (e.g., 5 clickable emojis) to the "Add a memory" form.
     *   [ ] Modify the nilDB schema (`message_for_nildb`) to include a `mood` (string or number) field.
