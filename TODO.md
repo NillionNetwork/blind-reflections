@@ -19,10 +19,3 @@
     *   [ ] Define a list of common reflection prompts (e.g., "Summarize...", "Identify patterns...", "Brainstorm...").
     *   [ ] Add a dropdown or list UI element near the "Ask SecretLLM" button to select a template.
     *   [ ] Populate the private reflection input field when a template is selected.
-
-**III. UI/UX Refinements:**
-
-*   [ ] **Improved Loading/Empty States:**
-    *   [ ] Review current loading (`showLoadingAnimation`) and empty state (`no-entries-message`, histogram message) displays.
-    *   [ ] Make loading states more integrated (e.g., placeholder skeletons instead of full overlays where appropriate).
-    *   [ ] Ensure empty state messages are clear and helpful across all relevant UI sections.

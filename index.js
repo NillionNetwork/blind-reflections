@@ -481,6 +481,11 @@ function initializeReflectionsApp() {
     // Global variables
     let currentSelectedDate = null;
     let calendar;
+    // References to potentially dynamic elements
+    const saveEntryBtn = document.getElementById('save-entry-btn');
+    const saveEntryBtnOriginalContent = saveEntryBtn ? saveEntryBtn.innerHTML : '';
+    const entriesLoadingSpinner = document.getElementById('entries-loading-spinner');
+    const histogramLoadingEl = document.getElementById('histogram-loading');
 
     // Local storage key
     const STORAGE_KEY = 'blind_reflections_data';
@@ -609,8 +614,11 @@ function initializeReflectionsApp() {
             entry: entryText,
         };
 
-        // Show loading animation
-        showLoadingAnimation("Saving your memory...");
+        // Show loading state on button
+        if (saveEntryBtn) {
+            saveEntryBtn.disabled = true;
+            saveEntryBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+        }
 
         try {
             if (!appState.collection) {
@@ -652,8 +660,11 @@ function initializeReflectionsApp() {
             console.error('Failed to write data to nilDB:', error);
             showWarningModal(`Failed to save memory: ${error.message}`);
         } finally {
-            // Hide loading animation
-            hideLoadingAnimation();
+            // Restore button state
+            if (saveEntryBtn) {
+                saveEntryBtn.disabled = false;
+                saveEntryBtn.innerHTML = saveEntryBtnOriginalContent;
+            }
         }
     }
 
@@ -713,7 +724,7 @@ function initializeReflectionsApp() {
         document.getElementById('no-date-message').style.display = 'none';
 
         // Show loading animation
-        showLoadingAnimation("Fetching memories...");
+        if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block'; // Show spinner
 
         // Fetch and display entries for the selected date
         try {
@@ -758,9 +769,11 @@ function initializeReflectionsApp() {
         } catch (error) {
             console.error('Failed to read data from nilDB:', error);
             showWarningModal(`Failed to fetch memories: ${error.message}`);
+            // Ensure entries display shows error state
+            displayEntries(null); // Pass null to trigger error display in displayEntries
         } finally {
             // Hide loading animation
-            hideLoadingAnimation();
+            if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none'; // Hide spinner
         }
     }
 
@@ -775,17 +788,39 @@ function initializeReflectionsApp() {
 
         entriesListEl.innerHTML = '';
 
-        if (!entries || entries.length === 0) {
+        // Ensure entries is a valid array before proceeding
+        if (!Array.isArray(entries)) {
+            console.error("displayEntries received non-array data:", entries);
+             // More user-friendly error display
+             noEntriesMessageEl.innerHTML = `
+                 <div class="text-center p-4">
+                     <i class="fas fa-exclamation-triangle fs-1 mb-3 text-warning"></i>
+                     <p>Could not load memories for this date.</p>
+                 </div>
+             `;
             noEntriesMessageEl.style.display = 'block';
             return;
         }
 
+        if (entries.length === 0) {
+            // More engaging empty state message
+            noEntriesMessageEl.innerHTML = `
+                 <div class="text-center p-4">
+                     <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
+                     <p>No memories for this date yet. Write your first memory!</p>
+                 </div>
+             `;
+            noEntriesMessageEl.style.display = 'block';
+            return;
+        }
+
+        // If we have entries, ensure the empty message is hidden
         noEntriesMessageEl.style.display = 'none';
 
-        // Sort entries by timestamp (newest first)
-        entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        // Create a copy before sorting to avoid modifying the original array passed in
+        const sortedEntries = [...entries].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        entries.forEach((entry) => {
+        sortedEntries.forEach((entry) => {
             const entryCard = document.createElement('div');
             entryCard.className = 'card entry-card mb-3';
             entryCard.style.cursor = 'pointer'; // Make it look clickable
@@ -1305,7 +1340,12 @@ function renderHistogram(data) {
     if (loadingMsg) loadingMsg.style.display = 'none';
 
     if (!Array.isArray(data) || data.length === 0) {
-        container.innerHTML = '<p class="text-muted small text-center w-100">No reflection data to display.</p>';
+        container.innerHTML = `
+            <div class="text-center p-4">
+                <i class="fas fa-chart-bar fs-1 mb-3 text-secondary"></i>
+                <p class="text-muted small">Not enough reflection data to display histogram.</p>
+            </div>
+        `;
         return;
     }
 
@@ -1336,6 +1376,9 @@ const TOP_K_RESULTS = 5; // Increase K for a better histogram (adjust as needed)
 
 // Helper function to run and log an initial query execution
 async function runAndLogInitialQuery() {
+    const histogramLoadingEl = document.getElementById('histogram-loading');
+    if(histogramLoadingEl) histogramLoadingEl.style.display = 'flex'; // Show loading state
+
     if (!appState.collection) {
         console.log("Skipping initial query: Collection not initialized.");
         renderHistogram([]); // Render empty state
@@ -1397,6 +1440,9 @@ async function runAndLogInitialQuery() {
         // Catch any unexpected errors from the call itself
         console.error(`❌ Unexpected error during initial query execution:`, e);
         renderHistogram([]); // Render empty state on error
+    } finally {
+        // Hide loading animation
+        if(histogramLoadingEl) histogramLoadingEl.style.display = 'none'; // Hide spinner
     }
 }
 

@@ -131,7 +131,10 @@
                             <h6 class="card-subtitle mb-2 text-muted">Top Reflection Days</h6>
                             <div id="histogram-container" class="histogram-container">
                                 <!-- Histogram bars will be rendered here -->
-                                <p id="histogram-loading" class="text-muted small">Loading histogram data...</p>
+                                <div id="histogram-loading" class="text-center p-4" style="display: none;">
+                                    <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                                    <p class="text-muted small mt-2 mb-0">Loading histogram data...</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -213,7 +216,13 @@
             <div class="col-md-6">
                 <div class="card border-0 shadow-sm" id="entries-card">
                     <div class="card-body">
-                        <h5 class="card-title mb-3" id="selected-date-header">No date selected</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                             <h5 class="card-title mb-0" id="selected-date-header">No date selected</h5>
+                             <!-- Spinner for loading entries -->
+                             <div class="spinner-border spinner-border-sm text-secondary ms-2" role="status" id="entries-loading-spinner" style="display: none;">
+                                 <span class="visually-hidden">Loading...</span>
+                             </div>
+                         </div>
 
                         <!-- New Entry Form -->
                         <div id="entry-form-container" class="mb-4" style="display: none;">

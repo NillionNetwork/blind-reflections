@@ -7880,6 +7880,10 @@ if (cid) {
   function initializeReflectionsApp() {
     let currentSelectedDate = null;
     let calendar;
+    const saveEntryBtn = document.getElementById("save-entry-btn");
+    const saveEntryBtnOriginalContent = saveEntryBtn ? saveEntryBtn.innerHTML : "";
+    const entriesLoadingSpinner = document.getElementById("entries-loading-spinner");
+    const histogramLoadingEl = document.getElementById("histogram-loading");
     const STORAGE_KEY = "blind_reflections_data";
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     const tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
@@ -7970,7 +7974,10 @@ if (cid) {
         date: currentSelectedDate,
         entry: entryText
       };
-      showLoadingAnimation("Saving your memory...");
+      if (saveEntryBtn) {
+        saveEntryBtn.disabled = true;
+        saveEntryBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+      }
       try {
         if (!appState.collection) {
           throw new Error("Collection not initialized. Please log in.");
@@ -7997,7 +8004,10 @@ if (cid) {
         console.error("Failed to write data to nilDB:", error);
         showWarningModal(`Failed to save memory: ${error.message}`);
       } finally {
-        hideLoadingAnimation();
+        if (saveEntryBtn) {
+          saveEntryBtn.disabled = false;
+          saveEntryBtn.innerHTML = saveEntryBtnOriginalContent;
+        }
       }
     }
     function markDatesWithEntries() {
@@ -8035,7 +8045,7 @@ if (cid) {
       document.getElementById("selected-date-header").textContent = formatDisplayDate(dateStr);
       document.getElementById("entry-form-container").style.display = "block";
       document.getElementById("no-date-message").style.display = "none";
-      showLoadingAnimation("Fetching memories...");
+      if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = "inline-block";
       try {
         const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
         const uuid = authData?.uuid;
@@ -8066,8 +8076,9 @@ if (cid) {
       } catch (error) {
         console.error("Failed to read data from nilDB:", error);
         showWarningModal(`Failed to fetch memories: ${error.message}`);
+        displayEntries(null);
       } finally {
-        hideLoadingAnimation();
+        if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = "none";
       }
     }
     const memoryQueue = [];
@@ -8076,13 +8087,30 @@ if (cid) {
       const noEntriesMessageEl = document.getElementById("no-entries-message");
       const memoryDisplayBox = document.getElementById("memory-display-box");
       entriesListEl.innerHTML = "";
-      if (!entries || entries.length === 0) {
+      if (!Array.isArray(entries)) {
+        console.error("displayEntries received non-array data:", entries);
+        noEntriesMessageEl.innerHTML = `
+                 <div class="text-center p-4">
+                     <i class="fas fa-exclamation-triangle fs-1 mb-3 text-warning"></i>
+                     <p>Could not load memories for this date.</p>
+                 </div>
+             `;
+        noEntriesMessageEl.style.display = "block";
+        return;
+      }
+      if (entries.length === 0) {
+        noEntriesMessageEl.innerHTML = `
+                 <div class="text-center p-4">
+                     <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
+                     <p>No memories for this date yet. Write your first memory!</p>
+                 </div>
+             `;
         noEntriesMessageEl.style.display = "block";
         return;
       }
       noEntriesMessageEl.style.display = "none";
-      entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      entries.forEach((entry) => {
+      const sortedEntries = [...entries].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      sortedEntries.forEach((entry) => {
         const entryCard = document.createElement("div");
         entryCard.className = "card entry-card mb-3";
         entryCard.style.cursor = "pointer";
@@ -8490,7 +8518,12 @@ ${memoryContext}`
     container.innerHTML = "";
     if (loadingMsg) loadingMsg.style.display = "none";
     if (!Array.isArray(data) || data.length === 0) {
-      container.innerHTML = '<p class="text-muted small text-center w-100">No reflection data to display.</p>';
+      container.innerHTML = `
+            <div class="text-center p-4">
+                <i class="fas fa-chart-bar fs-1 mb-3 text-secondary"></i>
+                <p class="text-muted small">Not enough reflection data to display histogram.</p>
+            </div>
+        `;
       return;
     }
     const maxCount = Math.max(...data.map((item) => Number(item.reflections_count) || 0));
@@ -8514,6 +8547,8 @@ ${memoryContext}`
   }
   var TOP_K_RESULTS = 5;
   async function runAndLogInitialQuery() {
+    const histogramLoadingEl = document.getElementById("histogram-loading");
+    if (histogramLoadingEl) histogramLoadingEl.style.display = "flex";
     if (!appState.collection) {
       console.log("Skipping initial query: Collection not initialized.");
       renderHistogram([]);
@@ -8565,6 +8600,8 @@ ${memoryContext}`
     } catch (e) {
       console.error(`\u274C Unexpected error during initial query execution:`, e);
       renderHistogram([]);
+    } finally {
+      if (histogramLoadingEl) histogramLoadingEl.style.display = "none";
     }
   }
   function initializeAuth() {
