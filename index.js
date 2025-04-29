@@ -4,6 +4,19 @@ import { createJWT, ES256KSigner } from 'did-jwt';
 
 window.Buffer = Buffer; // Required for in-browser use of eciesjs.
 
+// SHA-256 Helper using Web Crypto API
+async function sha256(message) {
+    // encode as UTF-8
+    const msgBuffer = new TextEncoder().encode(message);
+    // hash the message
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    // convert ArrayBuffer to Array
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    // convert bytes to hex string
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
+
 // Application state container
 const appState = {
     collection: null, // Holds the SecretVaultWrapper instance
@@ -1187,6 +1200,12 @@ function initializeAuth() {
     // Register and login buttons
     const registerButton = document.getElementById('register-button');
     const loginButton = document.getElementById('login-button');
+    const metaMaskButton = document.getElementById('connect-metamask-btn'); // Get MetaMask button
+
+    // Login form elements (needed for MetaMask pre-fill)
+    const loginUsernameInput = document.getElementById('login-username');
+    const loginPasswordInput = document.getElementById('login-password');
+    const loginTabLink = document.getElementById('login-tab'); // Get the login tab link
 
     // Function to create user display element if it doesn't exist
     function createUserDisplayElement() {
@@ -1260,26 +1279,34 @@ function initializeAuth() {
         }
     }
 
-    // Function to display the logged-in user
-    function displayLoggedInUser(uuid) {
-        if (userDisplaySpan && uuid) {
-            // Show the full UUID for display
-            userDisplaySpan.textContent = uuid;
-            userDisplaySpan.title = `Your unique identifier`;
+    // Function to display the logged-in user (handles UUID or Address)
+    function displayLoggedInUser(identifier) {
+        if (userDisplaySpan && identifier) {
+            let displayIdentifier = identifier;
+            // Check if it looks like an Ethereum address
+            if (identifier.startsWith('0x') && identifier.length === 42) {
+                // Truncate address for display
+                displayIdentifier = `${identifier.substring(0, 6)}...${identifier.substring(identifier.length - 4)}`;
+                userDisplaySpan.title = `Logged in as: ${identifier}`; // Full address in tooltip
+            } else {
+                userDisplaySpan.title = `Your unique identifier`; // Keep original title for UUID
+            }
+
+            userDisplaySpan.textContent = displayIdentifier;
             userDisplaySpan.classList.remove('d-none');
 
-            // Add a small copy button next to the UUID
+            // Add a small copy button next to the identifier
             const existingCopyBtn = document.getElementById('header-copy-uuid-btn');
             if (!existingCopyBtn) { // Only add if it doesn't exist
                 const copyBtn = document.createElement('button');
                 copyBtn.id = 'header-copy-uuid-btn';
                 copyBtn.className = 'btn btn-sm btn-outline-secondary ms-1';
-                copyBtn.title = 'Copy to clipboard';
+                copyBtn.title = 'Copy full identifier to clipboard';
                 copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
 
-                // Add copy functionality
+                // Add copy functionality (copies the full identifier)
                 copyBtn.addEventListener('click', function() {
-                    navigator.clipboard.writeText(uuid)
+                    navigator.clipboard.writeText(identifier) // Copy original full identifier
                         .then(function() {
                             copyBtn.innerHTML = '<i class="fas fa-check"></i>';
                             copyBtn.classList.add('btn-success');
@@ -1295,10 +1322,11 @@ function initializeAuth() {
                         })
                         .catch(function(err) {
                             console.error('Could not copy text: ', err);
+                            showWarningModal('Failed to copy to clipboard');
                         });
                 });
 
-                // Insert after the UUID span
+                // Insert after the identifier span
                 if (userDisplaySpan.parentNode) {
                     userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
                 }
@@ -1405,6 +1433,48 @@ function initializeAuth() {
         });
     }
 
+    // Handle MetaMask Connect button (pre-fill login form)
+    if (metaMaskButton && loginUsernameInput && loginPasswordInput && loginTabLink) {
+        metaMaskButton.addEventListener('click', async function() {
+            if (typeof window.ethereum === 'undefined') {
+                showWarningModal('MetaMask is not installed! Please install it to use this feature.');
+                return;
+            }
+
+            try {
+                // Request account access
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (!accounts || accounts.length === 0) {
+                    showWarningModal('Could not retrieve account from MetaMask.');
+                    return;
+                }
+                const address = accounts[0]; // User's Ethereum address
+
+                console.log(`MetaMask Connect: Fetched address=${address}`);
+
+                // Pre-fill the login form with the address
+                loginUsernameInput.value = address;
+
+                // Switch to the Login tab
+                const loginTab = new bootstrap.Tab(loginTabLink);
+                loginTab.show();
+
+                // Focus the password field for the user
+                loginPasswordInput.focus();
+
+                // --- Removed direct login logic ---
+                // User will now manually enter password and click the main Login button.
+
+            } catch (error) {
+                console.error('Error connecting with MetaMask:', error);
+                let userMessage = 'Failed to connect with MetaMask.';
+                if (error.code === 4001) { // EIP-1193 userRejectedRequest error
+                    userMessage = 'MetaMask connection request rejected.';
+                }
+                showWarningModal(userMessage);
+            }
+        });
+    }
 
     // Set UUID when register tab is shown
     if (registerTabLink && uuidSpan) {

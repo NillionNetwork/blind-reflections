@@ -8397,6 +8397,10 @@ ${memoryContext}`
     const userDisplaySpan = document.getElementById("user-display") || createUserDisplayElement();
     const registerButton = document.getElementById("register-button");
     const loginButton = document.getElementById("login-button");
+    const metaMaskButton = document.getElementById("connect-metamask-btn");
+    const loginUsernameInput = document.getElementById("login-username");
+    const loginPasswordInput = document.getElementById("login-password");
+    const loginTabLink = document.getElementById("login-tab");
     function createUserDisplayElement() {
       const span = document.createElement("span");
       span.id = "user-display";
@@ -8452,20 +8456,26 @@ ${memoryContext}`
         location.reload();
       }
     }
-    function displayLoggedInUser(uuid) {
-      if (userDisplaySpan && uuid) {
-        userDisplaySpan.textContent = uuid;
-        userDisplaySpan.title = `Your unique identifier`;
+    function displayLoggedInUser(identifier) {
+      if (userDisplaySpan && identifier) {
+        let displayIdentifier = identifier;
+        if (identifier.startsWith("0x") && identifier.length === 42) {
+          displayIdentifier = `${identifier.substring(0, 6)}...${identifier.substring(identifier.length - 4)}`;
+          userDisplaySpan.title = `Logged in as: ${identifier}`;
+        } else {
+          userDisplaySpan.title = `Your unique identifier`;
+        }
+        userDisplaySpan.textContent = displayIdentifier;
         userDisplaySpan.classList.remove("d-none");
         const existingCopyBtn = document.getElementById("header-copy-uuid-btn");
         if (!existingCopyBtn) {
           const copyBtn2 = document.createElement("button");
           copyBtn2.id = "header-copy-uuid-btn";
           copyBtn2.className = "btn btn-sm btn-outline-secondary ms-1";
-          copyBtn2.title = "Copy to clipboard";
+          copyBtn2.title = "Copy full identifier to clipboard";
           copyBtn2.innerHTML = '<i class="fas fa-copy"></i>';
           copyBtn2.addEventListener("click", function() {
-            navigator.clipboard.writeText(uuid).then(function() {
+            navigator.clipboard.writeText(identifier).then(function() {
               copyBtn2.innerHTML = '<i class="fas fa-check"></i>';
               copyBtn2.classList.add("btn-success");
               copyBtn2.classList.remove("btn-outline-secondary");
@@ -8478,6 +8488,7 @@ ${memoryContext}`
               }, 1200);
             }).catch(function(err) {
               console.error("Could not copy text: ", err);
+              showWarningModal("Failed to copy to clipboard");
             });
           });
           if (userDisplaySpan.parentNode) {
@@ -8544,6 +8555,34 @@ ${memoryContext}`
           runAndLogInitialQuery();
         } else {
           passwordInput.value = "";
+        }
+      });
+    }
+    if (metaMaskButton && loginUsernameInput && loginPasswordInput && loginTabLink) {
+      metaMaskButton.addEventListener("click", async function() {
+        if (typeof window.ethereum === "undefined") {
+          showWarningModal("MetaMask is not installed! Please install it to use this feature.");
+          return;
+        }
+        try {
+          const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+          if (!accounts || accounts.length === 0) {
+            showWarningModal("Could not retrieve account from MetaMask.");
+            return;
+          }
+          const address = accounts[0];
+          console.log(`MetaMask Connect: Fetched address=${address}`);
+          loginUsernameInput.value = address;
+          const loginTab = new bootstrap.Tab(loginTabLink);
+          loginTab.show();
+          loginPasswordInput.focus();
+        } catch (error) {
+          console.error("Error connecting with MetaMask:", error);
+          let userMessage = "Failed to connect with MetaMask.";
+          if (error.code === 4001) {
+            userMessage = "MetaMask connection request rejected.";
+          }
+          showWarningModal(userMessage);
         }
       });
     }
