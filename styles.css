@@ -616,3 +616,24 @@ header {
     text-align: center;
     padding: 20px;
 }
+
+/* Mic Button Styles */
+.mic-control-button {
+    background: none !important; /* Ensure no background */
+    border: none !important; /* Ensure no border */
+    color: var(--bs-secondary-color); /* Initial icon color (like secondary text) */
+    padding: 0;
+    line-height: 1;
+    transition: color 0.2s ease-in-out;
+}
+
+.mic-control-button:hover,
+.mic-control-button:focus {
+    color: var(--accent-color); /* Teal color on hover/focus */
+    box-shadow: none !important; /* Remove any focus shadow */
+}
+
+/* Ensure the stop icon inside keeps the danger color */
+.mic-control-button i.text-danger:hover {
+     color: var(--bs-danger) !important;
+}

@@ -139,15 +139,21 @@
 
                 <!-- New Box for Private Reflections -->
                 <div class="mt-3">
-                    <!-- User-editable textbox -->
-                    <textarea
-                        id="private-reflection-input"
-                        class="form-control mb-2"
-                        placeholder="Let's do some private reflections..."
-                        aria-label="Private Reflection"
-                        rows="2"
-                        style="resize: vertical;"
-                    ></textarea>
+                    <!-- Wrapper for Textarea and Mic Button -->
+                    <div class="position-relative mb-2">
+                        <textarea
+                            id="private-reflection-input"
+                            class="form-control"
+                            placeholder="Let's do some private reflections..."
+                            aria-label="Private Reflection"
+                            rows="2"
+                            style="resize: vertical; padding-right: 40px;" /* Add padding for button */
+                        ></textarea>
+                        <button id="mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation" style="position: absolute; right: 5px; top: 5px; bottom: 5px; width: 30px; display: flex; align-items: center; justify-content: center; border: none;">
+                             <i id="mic-icon" class="fas fa-microphone"></i>
+                        </button>
+                        <span id="speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
+                    </div>
 
                     <!-- Read-only list for memories -->
                     <ul
@@ -189,7 +195,14 @@
                         <div id="entry-form-container" class="mb-4" style="display: none;">
                             <div class="mb-3">
                                 <label for="entry-text" class="form-label">Add a memory</label>
-                                <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..."></textarea>
+                                <!-- Wrapper for Textarea and Mic Button -->
+                                <div class="position-relative">
+                                    <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..." style="padding-right: 40px;"></textarea>
+                                    <button id="entry-mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation" style="position: absolute; right: 5px; top: 5px; bottom: 5px; width: 30px; display: flex; align-items: center; justify-content: center; border: none;">
+                                         <i id="entry-mic-icon" class="fas fa-microphone"></i>
+                                    </button>
+                                    <span id="entry-speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
+                                </div>
                             </div>
                             <button type="button" class="btn btn-accent" id="save-entry-btn"><i class="fas fa-save me-1"></i>Save Memory</button>
                         </div>

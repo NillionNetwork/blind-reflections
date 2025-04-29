@@ -7951,8 +7951,8 @@ if (cid) {
         if (authModal) authModal.show();
         return;
       }
-      const entryTextArea = document.getElementById("entry-text");
-      const entryText = entryTextArea.value.trim();
+      const entryTextArea2 = document.getElementById("entry-text");
+      const entryText = entryTextArea2.value.trim();
       if (!entryText) {
         showWarningModal("Please enter some text for your reflection.");
         return;
@@ -7982,7 +7982,7 @@ if (cid) {
         }
         data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp });
         saveData(data);
-        entryTextArea.value = "";
+        entryTextArea2.value = "";
         displayEntries(data[currentSelectedDate]);
         markDateWithEntriesHelper(currentSelectedDate);
         const entriesList = document.getElementById("entries-list");
@@ -8269,6 +8269,175 @@ ${memoryContext}`
         saveEntry();
       }
     });
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const micButton = document.getElementById("mic-button");
+    const micIcon = document.getElementById("mic-icon");
+    const reflectionInput = document.getElementById("private-reflection-input");
+    const speechStatus = document.getElementById("speech-status");
+    let recognition;
+    let isRecording = false;
+    if (SpeechRecognition && micButton && reflectionInput && speechStatus && micIcon) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      micButton.addEventListener("click", () => {
+        if (isRecording) {
+          recognition.stop();
+        } else {
+          try {
+            recognition.start();
+          } catch (error) {
+            console.error("Error starting speech recognition:", error);
+            showWarningModal("Could not start dictation. Please check microphone permissions or try again.");
+            isRecording = false;
+            micIcon.className = "fas fa-microphone";
+            speechStatus.style.display = "none";
+          }
+        }
+      });
+      recognition.onstart = () => {
+        console.log("Speech recognition started");
+        isRecording = true;
+        micIcon.className = "fas fa-stop-circle text-danger";
+        speechStatus.textContent = "Listening...";
+        speechStatus.style.display = "inline";
+      };
+      recognition.onresult = (event) => {
+        let interimTranscript = "";
+        let finalTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript) {
+          const currentText = reflectionInput.value;
+          const separator = currentText.length > 0 && !/\s$/.test(currentText) ? " " : "";
+          reflectionInput.value += separator + finalTranscript.trim() + " ";
+          speechStatus.textContent = 'Added: "' + finalTranscript.trim() + '" ';
+          setTimeout(() => {
+            if (isRecording) speechStatus.textContent = "Listening...";
+          }, 1500);
+        }
+      };
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        let errorMessage = "An unknown error occurred during dictation.";
+        switch (event.error) {
+          case "no-speech":
+            errorMessage = "No speech was detected. Microphone might be muted or setup incorrectly.";
+            break;
+          case "audio-capture":
+            errorMessage = "Microphone not available. Check if it's connected and enabled.";
+            break;
+          case "not-allowed":
+            errorMessage = "Microphone permission denied. Please allow access in browser settings.";
+            break;
+          case "network":
+            errorMessage = "Network error during speech recognition. Check connection.";
+            break;
+        }
+        showWarningModal(errorMessage);
+        isRecording = false;
+        micIcon.className = "fas fa-microphone";
+        speechStatus.style.display = "none";
+      };
+      recognition.onend = () => {
+        console.log("Speech recognition ended");
+        isRecording = false;
+        micIcon.className = "fas fa-microphone";
+        speechStatus.style.display = "none";
+      };
+    } else {
+      if (micButton) micButton.style.display = "none";
+      console.warn("Web Speech API not supported or mic elements missing.");
+    }
+    const entryMicButton = document.getElementById("entry-mic-button");
+    const entryMicIcon = document.getElementById("entry-mic-icon");
+    const entryTextArea = document.getElementById("entry-text");
+    const entrySpeechStatus = document.getElementById("entry-speech-status");
+    let entryRecognition;
+    let isEntryRecording = false;
+    if (SpeechRecognition && entryMicButton && entryTextArea && entrySpeechStatus && entryMicIcon) {
+      entryRecognition = new SpeechRecognition();
+      entryRecognition.continuous = true;
+      entryRecognition.interimResults = true;
+      entryMicButton.addEventListener("click", () => {
+        if (isEntryRecording) {
+          entryRecognition.stop();
+        } else {
+          try {
+            entryRecognition.start();
+          } catch (error) {
+            console.error("Error starting entry speech recognition:", error);
+            showWarningModal("Could not start dictation for entry. Please check microphone permissions or try again.");
+            isEntryRecording = false;
+            entryMicIcon.className = "fas fa-microphone";
+            entrySpeechStatus.style.display = "none";
+          }
+        }
+      });
+      entryRecognition.onstart = () => {
+        console.log("Entry speech recognition started");
+        isEntryRecording = true;
+        entryMicIcon.className = "fas fa-stop-circle text-danger";
+        entrySpeechStatus.textContent = "Listening...";
+        entrySpeechStatus.style.display = "inline";
+      };
+      entryRecognition.onresult = (event) => {
+        let interimTranscript = "";
+        let finalTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript) {
+          const currentText = entryTextArea.value;
+          const separator = currentText.length > 0 && !/\s$/.test(currentText) ? " " : "";
+          entryTextArea.value += separator + finalTranscript.trim() + " ";
+          entrySpeechStatus.textContent = 'Added: "' + finalTranscript.trim() + '" ';
+          setTimeout(() => {
+            if (isEntryRecording) entrySpeechStatus.textContent = "Listening...";
+          }, 1500);
+        }
+      };
+      entryRecognition.onerror = (event) => {
+        console.error("Entry speech recognition error:", event.error);
+        let errorMessage = "An unknown error occurred during entry dictation.";
+        switch (event.error) {
+          case "no-speech":
+            errorMessage = "No speech was detected. Microphone might be muted or setup incorrectly.";
+            break;
+          case "audio-capture":
+            errorMessage = "Microphone not available. Check if it's connected and enabled.";
+            break;
+          case "not-allowed":
+            errorMessage = "Microphone permission denied. Please allow access in browser settings.";
+            break;
+          case "network":
+            errorMessage = "Network error during speech recognition. Check connection.";
+            break;
+        }
+        showWarningModal(errorMessage);
+        isEntryRecording = false;
+        entryMicIcon.className = "fas fa-microphone";
+        entrySpeechStatus.style.display = "none";
+      };
+      entryRecognition.onend = () => {
+        console.log("Entry speech recognition ended");
+        isEntryRecording = false;
+        entryMicIcon.className = "fas fa-microphone";
+        entrySpeechStatus.style.display = "none";
+      };
+    } else {
+      if (entryMicButton) entryMicButton.style.display = "none";
+      console.warn("Web Speech API not supported or entry mic elements missing.");
+    }
   }
   function ensureHistogramElements() {
     let section = document.getElementById("histogram-section");
