@@ -422,7 +422,6 @@ class SecretVaultWrapper {
           };
         }
       });
-      console.log('results', JSON.stringify(results, null, 2));
       return results;
     }
 
@@ -444,11 +443,11 @@ class SecretVaultWrapper {
           throw { error, node };
         }
       };
-      console.log('reading from nodes', this.nodes);
+
       const settledResults = await Promise.allSettled(
         this.nodes.map((node) => readDataFromNode(node)),
       );
-      console.log('settledResults', JSON.stringify(settledResults, null, 2));
+
       const results = settledResults.map((settledResult) => {
         if (settledResult.status === "fulfilled") {
           return {
@@ -463,7 +462,6 @@ class SecretVaultWrapper {
           };
         }
       });
-      console.log('results', JSON.stringify(results, null, 2));
 
       // Group records across nodes by _id
       const recordGroups = results.reduce((acc, nodeResult) => {
@@ -809,7 +807,6 @@ function initializeReflectionsApp() {
                 throw new Error("Collection not initialized. Please log in.");
             }
             const dataWritten = await appState.collection.writeToNodes([message_for_nildb]);
-            console.log('Data written to nilDB:', dataWritten);
             const recordId = dataWritten[0]?.data?.created?.[0]; // Extract the created ID
 
             const data = loadData();
@@ -946,12 +943,8 @@ function initializeReflectionsApp() {
                 throw new Error("Collection not initialized. Please log in.");
             }
 
-            console.log(`Fetching entries for date: ${dateStr}`);
             const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
-            console.log('Data read from nilDB (by date):', dataReadFromNilDB);
-
             const entries = processFetchedEntries(dataReadFromNilDB);
-            console.log('Entries:', entries);
 
             // Update local storage (optional, maybe only cache date-based fetches?)
             const data = loadData();
@@ -1009,15 +1002,11 @@ function initializeReflectionsApp() {
             }
 
             if (logicString === 'OR') {
-                console.log(`Fetching entries for tags (OR): ${tagsArray.join(', ')}`);
                 const allNodeResults = [];
                 for (const tag of tagsArray) {
-                    console.log(`Querying for tag: ${tag}`); // Log each tag query
                     const dataRead = await appState.collection.readFromNodes({ uuid, tags: tag });
-                    console.log(`Raw results for tag '${tag}':`, JSON.stringify(dataRead)); // Log raw results
                     allNodeResults.push(...dataRead); // Accumulate results from all nodes for this tag
                 }
-                console.log('All raw node results collected (OR):', JSON.stringify(allNodeResults)); // Log combined raw results
                 // Process and deduplicate based on ID
                 const processedEntries = processFetchedEntries(allNodeResults);
                 const uniqueEntriesMap = new Map();
@@ -1027,21 +1016,15 @@ function initializeReflectionsApp() {
                     }
                 });
                 finalEntries = Array.from(uniqueEntriesMap.values());
-                 console.log(`Processed & Deduplicated Entries (OR logic for ${tagsArray.join(', ')}):`, finalEntries);
-
 
             } else { // AND logic
-                console.log(`Fetching entries for tags (AND): ${tagsArray.join(', ')}`);
                 if (tagsArray.length === 0) {
                     finalEntries = []; // No tags means no results for AND
                 } else {
                     // Fetch based on the first tag
                     const firstTag = tagsArray[0];
-                    console.log(`Querying for first tag (AND): ${firstTag}`);
                     const dataRead = await appState.collection.readFromNodes({ uuid, tags: firstTag });
-                    console.log(`Raw results for first tag '${firstTag}':`, JSON.stringify(dataRead));
                     let potentialMatches = processFetchedEntries(dataRead);
-                    console.log(`Processed potential matches after first tag:`, potentialMatches);
 
                     // Client-side filter for remaining tags
                     if (tagsArray.length > 1) {
@@ -1050,13 +1033,11 @@ function initializeReflectionsApp() {
                              const hasAllTags = tagsArray.slice(1).every(requiredTag =>
                                  Array.isArray(entry.tags) && entry.tags.includes(requiredTag)
                              );
-                             // if (!hasAllTags) console.log(`Entry ${entry.id} filtered out (missing tags)`);
                              return hasAllTags;
                          });
                     } else {
                          finalEntries = potentialMatches; // Only one tag, so initial fetch is enough
                     }
-                     console.log(`Final Entries (AND logic for ${tagsArray.join(', ')}):`, finalEntries);
                 }
             }
 
@@ -1315,8 +1296,6 @@ function initializeReflectionsApp() {
         myHeaders.append("Accept", "application/json");
         myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`); // Use constant
 
-        console.log('Messages for API:', messages);
-
         const raw = JSON.stringify({
             model: selectedModel, // Use the selected model
             messages: messages,
@@ -1347,7 +1326,6 @@ function initializeReflectionsApp() {
             }
 
             const result = await response.json();
-            console.log('API Response:', result);
 
             // Show the response in a modal
             if (result.choices && result.choices[0] && result.choices[0].message) {
@@ -1455,7 +1433,6 @@ function initializeReflectionsApp() {
                 tagSearchButtonForLogic.dataset.selectedLogic = selectedLogic;
                 // Update the display span
                 tagLogicDisplaySpan.textContent = `(${selectedLogic})`;
-                console.log(`Tag logic selected: ${selectedLogic}`);
             }
         });
     }
@@ -1521,7 +1498,6 @@ function initializeReflectionsApp() {
         });
 
         recognition.onstart = () => {
-            console.log('Speech recognition started');
             isRecording = true;
             micIcon.className = 'fas fa-stop-circle text-danger';
             speechStatus.textContent = 'Listening...';
@@ -1577,7 +1553,6 @@ function initializeReflectionsApp() {
         };
 
         recognition.onend = () => {
-            console.log('Speech recognition ended');
             isRecording = false;
             micIcon.className = 'fas fa-microphone';
             speechStatus.style.display = 'none';
@@ -1619,7 +1594,6 @@ function initializeReflectionsApp() {
         });
 
         entryRecognition.onstart = () => {
-            console.log('Entry speech recognition started');
             isEntryRecording = true;
             entryMicIcon.className = 'fas fa-stop-circle text-danger';
             entrySpeechStatus.textContent = 'Listening...';
@@ -1675,7 +1649,6 @@ function initializeReflectionsApp() {
         };
 
         entryRecognition.onend = () => {
-            console.log('Entry speech recognition ended');
             isEntryRecording = false;
             entryMicIcon.className = 'fas fa-microphone';
             entrySpeechStatus.style.display = 'none';
@@ -1770,7 +1743,6 @@ async function runAndLogInitialQuery() {
     if(histogramLoadingEl) histogramLoadingEl.style.display = 'flex'; // Show loading state
 
     if (!appState.collection) {
-        console.log("Skipping initial query: Collection not initialized.");
         renderHistogram([]); // Render empty state
         return;
     }
@@ -1798,8 +1770,6 @@ async function runAndLogInitialQuery() {
         }
     };
 
-    console.log(`🚀 Running initial query execution (ID: ${queryPayload.id}, UUID: ${currentUserUuid}) on node: ${targetNode.url}`);
-
     try {
         // Call executeQueryOnSingleNode with the correct payload format
         const result = await appState.collection.executeQueryOnSingleNode(targetNode, queryPayload);
@@ -1807,24 +1777,17 @@ async function runAndLogInitialQuery() {
         if (result.error) {
             console.error(`❌ Initial query execution failed (Node: ${result.node}, Status: ${result.status}):`, result.error);
             renderHistogram([]); // Render empty state on error
+        } else if (Array.isArray(result.data)) { // Process even if empty
+            const sortedData = [...result.data].sort((a, b) => { // Create copy before sorting
+                // Ensure both counts are numbers before subtracting
+                const countA = Number(a.reflections_count) || 0;
+                const countB = Number(b.reflections_count) || 0;
+                return countB - countA; // Sort descending
+            });
+            const topK = sortedData.slice(0, TOP_K_RESULTS);
+            renderHistogram(topK); // Render histogram with top K data
         } else {
-            console.log(`✅ Initial query execution successful (Node: ${result.node}, Status: ${result.status}). Raw data:`, result.data);
-
-            // Process the results: sort by reflections_count and get top K
-            if (Array.isArray(result.data)) { // Process even if empty
-                const sortedData = [...result.data].sort((a, b) => { // Create copy before sorting
-                    // Ensure both counts are numbers before subtracting
-                    const countA = Number(a.reflections_count) || 0;
-                    const countB = Number(b.reflections_count) || 0;
-                    return countB - countA; // Sort descending
-                });
-                const topK = sortedData.slice(0, TOP_K_RESULTS);
-                console.log(`📊 Top ${TOP_K_RESULTS} reflection counts:`, topK);
-                renderHistogram(topK); // Render histogram with top K data
-            } else {
-                console.log("ℹ️ Data returned from query is not an array.");
-                renderHistogram([]); // Render empty state
-            }
+            renderHistogram([]); // Render empty state
         }
     } catch (e) {
         // Catch any unexpected errors from the call itself
@@ -1883,23 +1846,10 @@ function initializeAuth() {
 
     // Function to generate and set UUID
     function setUuid() {
-        try {
-            // Check if UUID span element exists
-            if (uuidSpan) {
-                // Generate a new UUID - the fallback is defined in the HTML if the library fails
-                const newUuid = uuidv4();
-                uuidSpan.textContent = newUuid;
-                console.log('UUID generated successfully');
-            }
-        } catch (error) {
-            console.error('Error generating UUID:', error);
-            // If there's an error, try the fallback method
-            if (uuidSpan) {
-                uuidSpan.textContent = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-                    return v.toString(16);
-                });
-            }
+        // Check if UUID span element exists
+        if (uuidSpan) {
+            const newUuid = uuidv4();
+            uuidSpan.textContent = newUuid;
         }
     }
 
@@ -1914,14 +1864,12 @@ function initializeAuth() {
     async function initializeCollection(uuid) {
         // Ensure collection is not re-initialized unnecessarily
         if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
-             console.log(`Collection already initialized for UUID: ${uuid}`);
              return;
         }
         try {
             // Store the instance in appState
             appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
             await appState.collection.init();
-            console.log(`Collection initialized for UUID: ${uuid}`);
         } catch (error) {
             console.error("Failed to initialize collection:", error);
             showWarningModal(`Error initializing connection: ${error.message}`);
@@ -2108,7 +2056,6 @@ function initializeAuth() {
                 return;
             }
             const address = accounts[0]; // User's Ethereum address
-            console.log(`Wallet Connect: Fetched address=${address}`);
 
             // Pre-fill the login form with the address
             loginUsernameInput.value = address;
@@ -2235,7 +2182,6 @@ async function fetchAndPopulateModels() {
             throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
         }
         const result = await response.json();
-        console.log("Available Models:", result);
 
         // Check if the result *itself* is an array
         if (Array.isArray(result)) {
@@ -2288,7 +2234,6 @@ function populateModelDropdown(models) {
                 const selectedId = e.target.dataset.modelId;
                 modelDisplaySpan.textContent = selectedId; // Update display
                 askLlmButton.dataset.selectedModel = selectedId; // Store selection on main button
-                console.log("Model selected:", selectedId);
             });
 
             listItem.appendChild(buttonItem);

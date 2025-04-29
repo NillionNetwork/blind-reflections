@@ -15715,7 +15715,6 @@ if (cid) {
           };
         }
       });
-      console.log("results", JSON.stringify(results, null, 2));
       return results;
     }
     async readFromNodes(filter = {}) {
@@ -15735,11 +15734,9 @@ if (cid) {
           throw { error, node };
         }
       };
-      console.log("reading from nodes", this.nodes);
       const settledResults = await Promise.allSettled(
         this.nodes.map((node) => readDataFromNode(node))
       );
-      console.log("settledResults", JSON.stringify(settledResults, null, 2));
       const results = settledResults.map((settledResult) => {
         if (settledResult.status === "fulfilled") {
           return {
@@ -15754,7 +15751,6 @@ if (cid) {
           };
         }
       });
-      console.log("results", JSON.stringify(results, null, 2));
       const recordGroups = results.reduce((acc, nodeResult) => {
         if (nodeResult.data) {
           for (const record of nodeResult.data) {
@@ -16014,7 +16010,6 @@ if (cid) {
           throw new Error("Collection not initialized. Please log in.");
         }
         const dataWritten = await appState.collection.writeToNodes([message_for_nildb]);
-        console.log("Data written to nilDB:", dataWritten);
         const recordId = dataWritten[0]?.data?.created?.[0];
         const data = loadData();
         const timestamp = (/* @__PURE__ */ new Date()).toISOString();
@@ -16101,11 +16096,8 @@ if (cid) {
         if (!appState.collection) {
           throw new Error("Collection not initialized. Please log in.");
         }
-        console.log(`Fetching entries for date: ${dateStr}`);
         const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
-        console.log("Data read from nilDB (by date):", dataReadFromNilDB);
         const entries = processFetchedEntries(dataReadFromNilDB);
-        console.log("Entries:", entries);
         const data = loadData();
         data[dateStr] = entries;
         saveData(data);
@@ -16145,15 +16137,11 @@ if (cid) {
           return;
         }
         if (logicString === "OR") {
-          console.log(`Fetching entries for tags (OR): ${tagsArray.join(", ")}`);
           const allNodeResults = [];
           for (const tag of tagsArray) {
-            console.log(`Querying for tag: ${tag}`);
             const dataRead = await appState.collection.readFromNodes({ uuid, tags: tag });
-            console.log(`Raw results for tag '${tag}':`, JSON.stringify(dataRead));
             allNodeResults.push(...dataRead);
           }
-          console.log("All raw node results collected (OR):", JSON.stringify(allNodeResults));
           const processedEntries = processFetchedEntries(allNodeResults);
           const uniqueEntriesMap = /* @__PURE__ */ new Map();
           processedEntries.forEach((entry) => {
@@ -16162,18 +16150,13 @@ if (cid) {
             }
           });
           finalEntries = Array.from(uniqueEntriesMap.values());
-          console.log(`Processed & Deduplicated Entries (OR logic for ${tagsArray.join(", ")}):`, finalEntries);
         } else {
-          console.log(`Fetching entries for tags (AND): ${tagsArray.join(", ")}`);
           if (tagsArray.length === 0) {
             finalEntries = [];
           } else {
             const firstTag = tagsArray[0];
-            console.log(`Querying for first tag (AND): ${firstTag}`);
             const dataRead = await appState.collection.readFromNodes({ uuid, tags: firstTag });
-            console.log(`Raw results for first tag '${firstTag}':`, JSON.stringify(dataRead));
             let potentialMatches = processFetchedEntries(dataRead);
-            console.log(`Processed potential matches after first tag:`, potentialMatches);
             if (tagsArray.length > 1) {
               finalEntries = potentialMatches.filter((entry) => {
                 const hasAllTags = tagsArray.slice(1).every(
@@ -16184,7 +16167,6 @@ if (cid) {
             } else {
               finalEntries = potentialMatches;
             }
-            console.log(`Final Entries (AND logic for ${tagsArray.join(", ")}):`, finalEntries);
           }
         }
       } catch (error) {
@@ -16367,7 +16349,6 @@ ${memoryContext}`
       myHeaders.append("Content-Type", "application/json");
       myHeaders.append("Accept", "application/json");
       myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`);
-      console.log("Messages for API:", messages);
       const raw = JSON.stringify({
         model: selectedModel,
         // Use the selected model
@@ -16393,7 +16374,6 @@ ${memoryContext}`
           throw new Error(`API Error (${response.status}): ${errorText}`);
         }
         const result = await response.json();
-        console.log("API Response:", result);
         if (result.choices && result.choices[0] && result.choices[0].message) {
           showLLMResponseModal(result.choices[0].message.content);
         } else {
@@ -16468,7 +16448,6 @@ ${memoryContext}`
           const selectedLogic = button.dataset.logic;
           tagSearchButtonForLogic.dataset.selectedLogic = selectedLogic;
           tagLogicDisplaySpan.textContent = `(${selectedLogic})`;
-          console.log(`Tag logic selected: ${selectedLogic}`);
         }
       });
     }
@@ -16517,7 +16496,6 @@ ${memoryContext}`
         }
       });
       recognition.onstart = () => {
-        console.log("Speech recognition started");
         isRecording = true;
         micIcon.className = "fas fa-stop-circle text-danger";
         speechStatus.textContent = "Listening...";
@@ -16566,7 +16544,6 @@ ${memoryContext}`
         speechStatus.style.display = "none";
       };
       recognition.onend = () => {
-        console.log("Speech recognition ended");
         isRecording = false;
         micIcon.className = "fas fa-microphone";
         speechStatus.style.display = "none";
@@ -16601,7 +16578,6 @@ ${memoryContext}`
         }
       });
       entryRecognition.onstart = () => {
-        console.log("Entry speech recognition started");
         isEntryRecording = true;
         entryMicIcon.className = "fas fa-stop-circle text-danger";
         entrySpeechStatus.textContent = "Listening...";
@@ -16650,7 +16626,6 @@ ${memoryContext}`
         entrySpeechStatus.style.display = "none";
       };
       entryRecognition.onend = () => {
-        console.log("Entry speech recognition ended");
         isEntryRecording = false;
         entryMicIcon.className = "fas fa-microphone";
         entrySpeechStatus.style.display = "none";
@@ -16731,7 +16706,6 @@ ${memoryContext}`
     const histogramLoadingEl = document.getElementById("histogram-loading");
     if (histogramLoadingEl) histogramLoadingEl.style.display = "flex";
     if (!appState.collection) {
-      console.log("Skipping initial query: Collection not initialized.");
       renderHistogram([]);
       return;
     }
@@ -16756,27 +16730,21 @@ ${memoryContext}`
         // Provide the required uuid variable
       }
     };
-    console.log(`\u{1F680} Running initial query execution (ID: ${queryPayload.id}, UUID: ${currentUserUuid}) on node: ${targetNode.url}`);
     try {
       const result = await appState.collection.executeQueryOnSingleNode(targetNode, queryPayload);
       if (result.error) {
         console.error(`\u274C Initial query execution failed (Node: ${result.node}, Status: ${result.status}):`, result.error);
         renderHistogram([]);
+      } else if (Array.isArray(result.data)) {
+        const sortedData = [...result.data].sort((a, b2) => {
+          const countA = Number(a.reflections_count) || 0;
+          const countB = Number(b2.reflections_count) || 0;
+          return countB - countA;
+        });
+        const topK = sortedData.slice(0, TOP_K_RESULTS);
+        renderHistogram(topK);
       } else {
-        console.log(`\u2705 Initial query execution successful (Node: ${result.node}, Status: ${result.status}). Raw data:`, result.data);
-        if (Array.isArray(result.data)) {
-          const sortedData = [...result.data].sort((a, b2) => {
-            const countA = Number(a.reflections_count) || 0;
-            const countB = Number(b2.reflections_count) || 0;
-            return countB - countA;
-          });
-          const topK = sortedData.slice(0, TOP_K_RESULTS);
-          console.log(`\u{1F4CA} Top ${TOP_K_RESULTS} reflection counts:`, topK);
-          renderHistogram(topK);
-        } else {
-          console.log("\u2139\uFE0F Data returned from query is not an array.");
-          renderHistogram([]);
-        }
+        renderHistogram([]);
       }
     } catch (e3) {
       console.error(`\u274C Unexpected error during initial query execution:`, e3);
@@ -16816,20 +16784,9 @@ ${memoryContext}`
       return span;
     }
     function setUuid() {
-      try {
-        if (uuidSpan) {
-          const newUuid = v4_default();
-          uuidSpan.textContent = newUuid;
-          console.log("UUID generated successfully");
-        }
-      } catch (error) {
-        console.error("Error generating UUID:", error);
-        if (uuidSpan) {
-          uuidSpan.textContent = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
-            var r3 = Math.random() * 16 | 0, v = c == "x" ? r3 : r3 & 3 | 8;
-            return v.toString(16);
-          });
-        }
+      if (uuidSpan) {
+        const newUuid = v4_default();
+        uuidSpan.textContent = newUuid;
       }
     }
     function saveAuthData(uuid, password) {
@@ -16839,13 +16796,11 @@ ${memoryContext}`
     }
     async function initializeCollection(uuid) {
       if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
-        console.log(`Collection already initialized for UUID: ${uuid}`);
         return;
       }
       try {
         appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA);
         await appState.collection.init();
-        console.log(`Collection initialized for UUID: ${uuid}`);
       } catch (error) {
         console.error("Failed to initialize collection:", error);
         showWarningModal(`Error initializing connection: ${error.message}`);
@@ -16974,7 +16929,6 @@ ${memoryContext}`
           return;
         }
         const address = accounts[0];
-        console.log(`Wallet Connect: Fetched address=${address}`);
         loginUsernameInput.value = address;
         const loginTab = new bootstrap.Tab(loginTabLink);
         loginTab.show();
@@ -17060,7 +17014,6 @@ ${memoryContext}`
         throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
       }
       const result = await response.json();
-      console.log("Available Models:", result);
       if (Array.isArray(result)) {
         populateModelDropdown(result);
       } else {
@@ -17101,7 +17054,6 @@ ${memoryContext}`
           const selectedId = e3.target.dataset.modelId;
           modelDisplaySpan.textContent = selectedId;
           askLlmButton.dataset.selectedModel = selectedId;
-          console.log("Model selected:", selectedId);
         });
         listItem.appendChild(buttonItem);
         modelDropdownMenu.appendChild(listItem);
