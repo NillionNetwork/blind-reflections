@@ -7516,6 +7516,9 @@ if (cid) {
   };
   var SCHEMA = "fa800faa-c7ec-4a09-bf76-6ec768ee6299";
   var AGGREGATION = "87b54dc5-4229-455f-9d60-2c6cf315a74a";
+  var NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
+  var NIL_API_TOKEN = "Nillion2025";
+  var DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
   var SecretVaultWrapper = class {
     constructor(nodes, credentials, schemaId = null, operation = "store", tokenExpirySeconds = 36e6) {
       this.nodes = nodes;
@@ -8137,8 +8140,17 @@ if (cid) {
         memoryDisplayBox.appendChild(memoryCard);
       });
     }
-    document.getElementById("ask-secret-llm-btn").addEventListener("click", async () => {
+    document.getElementById("ask-secret-llm-btn").addEventListener("click", async (event) => {
+      if (event.target.closest("#model-select-dropdown-toggle")) {
+        return;
+      }
+      const askLlmButton = document.getElementById("ask-secret-llm-btn");
       const privateReflectionInput = document.getElementById("private-reflection-input");
+      const selectedModel = askLlmButton ? askLlmButton.dataset.selectedModel : DEFAULT_LLM_MODEL;
+      if (!selectedModel) {
+        showWarningModal("Please select an LLM model using the gear icon.");
+        return;
+      }
       if (!privateReflectionInput.value.trim() && memoryQueue.length === 0) {
         showWarningModal("Please provide a prompt and select at least one memory.");
         return;
@@ -8171,11 +8183,11 @@ ${memoryContext}`
       const myHeaders = new Headers();
       myHeaders.append("Content-Type", "application/json");
       myHeaders.append("Accept", "application/json");
-      myHeaders.append("Authorization", "Bearer Nillion2025");
+      myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`);
       console.log("Messages for API:", messages);
       const raw = JSON.stringify({
-        model: "meta-llama/Llama-3.1-8B-Instruct",
-        // TODO: Move to config
+        model: selectedModel,
+        // Use the selected model
         messages,
         temperature: 0.2,
         top_p: 0.95,
@@ -8192,7 +8204,7 @@ ${memoryContext}`
       };
       showLoadingAnimation("Waiting for SecretLLM...");
       try {
-        const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
+        const response = await fetch(`${NIL_API_BASE_URL}/chat/completions`, requestOptions);
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`API Error (${response.status}): ${errorText}`);
@@ -8810,9 +8822,88 @@ ${memoryContext}`
       })();
     }
   }
+  async function fetchAndPopulateModels() {
+    const modelDropdownMenu = document.getElementById("model-select-dropdown-menu");
+    const modelDisplaySpan = document.getElementById("llm-model-display");
+    const askLlmButton = document.getElementById("ask-secret-llm-btn");
+    if (modelDisplaySpan) modelDisplaySpan.textContent = "Loading...";
+    if (askLlmButton) askLlmButton.dataset.selectedModel = "";
+    const myHeaders = new Headers();
+    myHeaders.append("Accept", "application/json");
+    myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`);
+    const requestOptions = {
+      method: "GET",
+      headers: myHeaders,
+      redirect: "follow"
+    };
+    try {
+      const response = await fetch(`${NIL_API_BASE_URL}/models`, requestOptions);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+      }
+      const result = await response.json();
+      console.log("Available Models:", result);
+      if (Array.isArray(result)) {
+        populateModelDropdown(result);
+      } else {
+        throw new Error("Unexpected response structure for models");
+      }
+    } catch (error) {
+      console.error("Error fetching models:", error);
+      if (modelDropdownMenu) modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">Error loading models</a></li>';
+      if (modelDisplaySpan) modelDisplaySpan.textContent = "Error";
+      if (askLlmButton) askLlmButton.dataset.selectedModel = "";
+    }
+  }
+  function populateModelDropdown(models) {
+    const modelDropdownMenu = document.getElementById("model-select-dropdown-menu");
+    const modelDisplaySpan = document.getElementById("llm-model-display");
+    const askLlmButton = document.getElementById("ask-secret-llm-btn");
+    if (!modelDropdownMenu || !modelDisplaySpan || !askLlmButton) {
+      console.error("Required elements for model dropdown not found.");
+      return;
+    }
+    modelDropdownMenu.innerHTML = "";
+    if (!models || models.length === 0) {
+      modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">No models available</a></li>';
+      modelDisplaySpan.textContent = "N/A";
+      askLlmButton.dataset.selectedModel = "";
+      return;
+    }
+    let defaultModelSet = false;
+    models.forEach((model) => {
+      if (model && typeof model.id === "string") {
+        const listItem = document.createElement("li");
+        const buttonItem = document.createElement("button");
+        buttonItem.className = "dropdown-item";
+        buttonItem.type = "button";
+        buttonItem.textContent = model.id;
+        buttonItem.dataset.modelId = model.id;
+        buttonItem.addEventListener("click", (e) => {
+          const selectedId = e.target.dataset.modelId;
+          modelDisplaySpan.textContent = selectedId;
+          askLlmButton.dataset.selectedModel = selectedId;
+          console.log("Model selected:", selectedId);
+        });
+        listItem.appendChild(buttonItem);
+        modelDropdownMenu.appendChild(listItem);
+        if (!defaultModelSet && model.id === DEFAULT_LLM_MODEL) {
+          modelDisplaySpan.textContent = model.id;
+          askLlmButton.dataset.selectedModel = model.id;
+          defaultModelSet = true;
+        }
+      }
+    });
+    if (!defaultModelSet && models.length > 0 && models[0] && models[0].id) {
+      const firstModelId = models[0].id;
+      modelDisplaySpan.textContent = firstModelId;
+      askLlmButton.dataset.selectedModel = firstModelId;
+    }
+  }
   document.addEventListener("DOMContentLoaded", function() {
     initializeReflectionsApp();
     initializeAuth();
+    fetchAndPopulateModels();
   });
 })();
 /*! Bundled license information:

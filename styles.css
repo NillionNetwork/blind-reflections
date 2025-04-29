@@ -637,3 +637,32 @@ header {
 .mic-control-button i.text-danger:hover {
      color: var(--bs-danger) !important;
 }
+
+/* Make Ask LLM button taller and style selected model text */
+.ask-llm-btn-main {
+    min-height: 60px; /* Adjust as needed */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding-top: 0.5rem; /* Adjust padding */
+    padding-bottom: 0.5rem;
+    line-height: 1.2;
+}
+
+.selected-model-display {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    margin-top: 4px;
+}
+
+/* Style the gear toggle button */
+.ask-llm-btn-toggle {
+    display: flex;
+    align-items: center;
+}
+
+/* Ensure the stop icon inside keeps the danger color */
+.mic-control-button i.text-danger:hover {
+     color: var(--bs-danger) !important;
+}

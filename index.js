@@ -52,6 +52,11 @@ const AGGREGATION = '87b54dc5-4229-455f-9d60-2c6cf315a74a';
 // const SCHEMA = 'd6381b22-a274-44f5-b1f4-0cd03526ed03';
 // const AGGREGATION = 'eae83257-c0f4-4752-9042-0bc83c344b8b';
 
+// --- Constants --- (Moved Bearer token here)
+const NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
+const NIL_API_TOKEN = "Nillion2025"; // TODO: Secure this token
+const DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
+
 class SecretVaultWrapper {
     constructor(
         nodes,
@@ -867,8 +872,21 @@ function initializeReflectionsApp() {
         });
     }
 
-    document.getElementById('ask-secret-llm-btn').addEventListener('click', async () => {
+    document.getElementById('ask-secret-llm-btn').addEventListener('click', async (event) => {
+        // Prevent dropdown from interfering if main button part is clicked
+        if (event.target.closest('#model-select-dropdown-toggle')) {
+            return;
+        }
+
+        const askLlmButton = document.getElementById('ask-secret-llm-btn'); // Get button reference
         const privateReflectionInput = document.getElementById('private-reflection-input');
+
+        // Get selected model from the button's data attribute
+        const selectedModel = askLlmButton ? askLlmButton.dataset.selectedModel : DEFAULT_LLM_MODEL;
+        if (!selectedModel) { // Check if a model is actually selected
+            showWarningModal('Please select an LLM model using the gear icon.');
+            return;
+        }
 
         // Check if input or memories are empty
         if (!privateReflectionInput.value.trim() && memoryQueue.length === 0) {
@@ -911,12 +929,12 @@ function initializeReflectionsApp() {
         const myHeaders = new Headers();
         myHeaders.append("Content-Type", "application/json");
         myHeaders.append("Accept", "application/json");
-        myHeaders.append("Authorization", "Bearer Nillion2025"); // TODO: Replace with secure method
+        myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`); // Use constant
 
         console.log('Messages for API:', messages);
 
         const raw = JSON.stringify({
-            model: "meta-llama/Llama-3.1-8B-Instruct", // TODO: Move to config
+            model: selectedModel, // Use the selected model
             messages: messages,
             temperature: 0.2,
             top_p: 0.95,
@@ -937,8 +955,7 @@ function initializeReflectionsApp() {
 
         // Make the API call
         try {
-            // TODO: Move URL to config
-            const response = await fetch("https://nilai-a779.nillion.network/v1/chat/completions", requestOptions);
+            const response = await fetch(`${NIL_API_BASE_URL}/chat/completions`, requestOptions); // Use constant
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -1752,8 +1769,117 @@ function initializeAuth() {
     }
 }
 
+// Function to fetch available LLM models
+async function fetchAndPopulateModels() {
+    // No longer need the old select element
+    // const modelSelect = document.getElementById('llm-model-select');
+    // if (!modelSelect) return;
+
+    const modelDropdownMenu = document.getElementById('model-select-dropdown-menu');
+    const modelDisplaySpan = document.getElementById('llm-model-display');
+    const askLlmButton = document.getElementById('ask-secret-llm-btn');
+
+    // Initial state before fetch
+    if (modelDisplaySpan) modelDisplaySpan.textContent = 'Loading...';
+    if (askLlmButton) askLlmButton.dataset.selectedModel = ''; // Clear selected model data
+
+    const myHeaders = new Headers();
+    myHeaders.append("Accept", "application/json");
+    myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`);
+
+    const requestOptions = {
+      method: "GET",
+      headers: myHeaders,
+      redirect: "follow"
+    };
+
+    try {
+        const response = await fetch(`${NIL_API_BASE_URL}/models`, requestOptions);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log("Available Models:", result);
+
+        // Check if the result *itself* is an array
+        if (Array.isArray(result)) {
+            populateModelDropdown(result); // Pass the result array directly
+        } else {
+            throw new Error("Unexpected response structure for models");
+        }
+
+    } catch (error) {
+        console.error("Error fetching models:", error);
+        // Update dropdown menu and display span to show error
+        if(modelDropdownMenu) modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">Error loading models</a></li>';
+        if(modelDisplaySpan) modelDisplaySpan.textContent = 'Error';
+        if(askLlmButton) askLlmButton.dataset.selectedModel = ''; // Clear selection on error
+    }
+}
+
+// Function to populate the new model dropdown menu (UL element)
+function populateModelDropdown(models) {
+    const modelDropdownMenu = document.getElementById('model-select-dropdown-menu');
+    const modelDisplaySpan = document.getElementById('llm-model-display');
+    const askLlmButton = document.getElementById('ask-secret-llm-btn');
+
+    if (!modelDropdownMenu || !modelDisplaySpan || !askLlmButton) {
+        console.error("Required elements for model dropdown not found.");
+        return;
+    }
+
+    modelDropdownMenu.innerHTML = ''; // Clear existing items (like "Loading...")
+
+    if (!models || models.length === 0) {
+        modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">No models available</a></li>';
+        modelDisplaySpan.textContent = 'N/A';
+        askLlmButton.dataset.selectedModel = '';
+        return;
+    }
+
+    let defaultModelSet = false;
+    models.forEach(model => {
+        if (model && typeof model.id === 'string') {
+            const listItem = document.createElement('li');
+            const buttonItem = document.createElement('button');
+            buttonItem.className = 'dropdown-item';
+            buttonItem.type = 'button';
+            buttonItem.textContent = model.id;
+            buttonItem.dataset.modelId = model.id; // Store model ID on the button
+
+            // Add click listener to update selection
+            buttonItem.addEventListener('click', (e) => {
+                const selectedId = e.target.dataset.modelId;
+                modelDisplaySpan.textContent = selectedId; // Update display
+                askLlmButton.dataset.selectedModel = selectedId; // Store selection on main button
+                console.log("Model selected:", selectedId);
+            });
+
+            listItem.appendChild(buttonItem);
+            modelDropdownMenu.appendChild(listItem);
+
+            // Set initial display and selection based on default
+            if (!defaultModelSet && model.id === DEFAULT_LLM_MODEL) {
+                modelDisplaySpan.textContent = model.id;
+                askLlmButton.dataset.selectedModel = model.id;
+                defaultModelSet = true;
+            }
+        }
+    });
+
+    // If default wasn't found, select and display the first one
+    if (!defaultModelSet && models.length > 0 && models[0] && models[0].id) {
+         const firstModelId = models[0].id;
+         modelDisplaySpan.textContent = firstModelId;
+         askLlmButton.dataset.selectedModel = firstModelId;
+         // Add active class to the first item visually if needed (optional)
+         // modelDropdownMenu.querySelector('.dropdown-item')?.classList.add('active');
+    }
+}
+
 // Single DOMContentLoaded listener to initialize both parts
 document.addEventListener('DOMContentLoaded', function() {
     initializeReflectionsApp();
     initializeAuth();
+    fetchAndPopulateModels(); // Fetch models when DOM is ready
 });

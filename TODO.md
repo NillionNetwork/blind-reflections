@@ -1,0 +1,28 @@
+# Feature TODO List for Blind Reflections:
+
+**I. Core Reflection Experience:**
+
+*   [ ] **Entry Editing:** Add an "Edit" icon/button to displayed entry cards. Create a modal or inline editing UI for modifying entry text.
+*   [ ] **Entry Deleting:** Add a "Delete" icon/button to displayed entry cards. Add a confirmation step (e.g., modal) before deleting. Use the existing `deleteDataFromNodes` method in `SecretVaultWrapper`. Update local storage (`saveData`) and refresh the UI (`displayEntries`, `markDatesWithEntriesHelper`, `runAndLogInitialQuery` for histogram) after successful deletion.
+*   [ ] **Tags/Categories:**
+    *   [ ] Add an input field (e.g., comma-separated tags) to the "Add a memory" form. Modify the nilDB schema (`message_for_nildb`) to include a `tags` (array of strings) or `category` (string) field. Store tags/category data when saving entries (`saveEntry`). Display tags/category on entry cards.
+    *   [ ] Add UI elements (e.g., tag list) to filter displayed entries by tag/category.
+*   [ ] **Mood Tracking:**
+    *   [ ] Add a simple mood selector (e.g., 5 clickable emojis) to the "Add a memory" form.
+    *   [ ] Modify the nilDB schema (`message_for_nildb`) to include a `mood` (string or number) field.
+    *   [ ] Store mood data when saving entries (`saveEntry`).
+    *   [ ] Display the mood visually on entry cards (e.g., show the selected emoji).
+
+**II. SecretLLM Interaction:**
+
+*   [ ] **Prompt Templates:**
+    *   [ ] Define a list of common reflection prompts (e.g., "Summarize...", "Identify patterns...", "Brainstorm...").
+    *   [ ] Add a dropdown or list UI element near the "Ask SecretLLM" button to select a template.
+    *   [ ] Populate the private reflection input field when a template is selected.
+
+**III. UI/UX Refinements:**
+
+*   [ ] **Improved Loading/Empty States:**
+    *   [ ] Review current loading (`showLoadingAnimation`) and empty state (`no-entries-message`, histogram message) displays.
+    *   [ ] Make loading states more integrated (e.g., placeholder skeletons instead of full overlays where appropriate).
+    *   [ ] Ensure empty state messages are clear and helpful across all relevant UI sections.
