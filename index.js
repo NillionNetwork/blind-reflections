@@ -22,7 +22,6 @@ async function sha256(message) {
 // Application state container
 const appState = {
     collection: null, // Holds the SecretVaultWrapper instance
-    collection_sum: null, // Holds the SecretVaultWrapper instance
 };
 
 /* Organization configuration for nilDB. */
@@ -47,128 +46,20 @@ const NILDB = {
     ],
 };
 
-// The `memory` entry is stored with shares
-const SCHEMA = '35969a5c-a698-4110-bd18-921078bf7759';
-const AGGREGATION = '1749d382-356b-4314-80c0-28f7075b4359';
+// The `memory` and `mood` entries are stored with shares
+const SCHEMA = 'a3388a06-e722-4cfa-aba7-2c36eeaca983';
+const AGGREGATION = '2cc2c020-a56a-4ac8-8136-d7a4d7eb5d65';
 
 // --- Constants --- (Moved Bearer token here)
 const NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
 const NIL_API_TOKEN = "Nillion2025"; // TODO: Secure this token
 const DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
 
-
-// Define an enum for key types
-export const KeyType = {
-  CLUSTER: "cluster",
-  SECRET: "secret",
-};
-
-// Define an enum for operations types
-export const OperationType = {
-  STORE: "store",
-  SUM: "sum",
-  MATCH: "match",
-};
-
-/**
- * NilQLWrapper provides encryption and decryption of data using Nillion's technology.
- * It generates and manages secret keys, splits data into shares when encrypting,
- * and recombines shares when decrypting.
- *
- * @example
- * const wrapper = new NilQLWrapper(cluster);
- * await wrapper.init();
- * const shares = await wrapper.encrypt(sensitiveData);
- */
-export class NilQLWrapper {
-  constructor(
-    cluster,
-    operation = OperationType.STORE,
-    secretKey = null, // option to pass in your own secret key
-    secretKeySeed = null,
-    keyType = KeyType.CLUSTER,
-  ) {
-    this.cluster = cluster;
-    this.secretKey = secretKey;
-    this.secretKeySeed = secretKeySeed;
-    this.operation = {
-      [operation]: true,
-    };
-    this.keyType = keyType;
-  }
-
-  /**
-   * Initializes the NilQLWrapper by generating and storing a secret key
-   * for the cluster. This must be called before any encryption/decryption operations.
-   * @returns {Promise<void>}
-   */
-  async init() {
-    // Create secretKey from secretKeySeed, if provided
-    if (this.secretKeySeed && this.secretKey === null) {
-      this.secretKey = await nilql.SecretKey.generate(
-        this.cluster,
-        this.operation,
-        null,
-        this.secretKeySeed,
-      );
-    }
-
-    if (this.secretKey === null) {
-      switch (this.keyType) {
-        case KeyType.SECRET:
-          this.secretKey = await nilql.SecretKey.generate(
-            this.cluster,
-            this.operation,
-          );
-          break;
-        case KeyType.CLUSTER:
-          this.secretKey = await nilql.ClusterKey.generate(
-            this.cluster,
-            this.operation,
-          );
-          break;
-        default:
-          throw new Error("Unsupported key type");
-      }
-    }
-  }
-
-  /**
-   * Encrypts data using the initialized secret key
-   * @param {any} data - The data to encrypt
-   * @throws {Error} If NilQLWrapper hasn't been initialized
-   * @returns {Promise<Array>} Array of encrypted shares
-   */
-  async encrypt(data) {
-    if (!this.secretKey) {
-      throw new Error("NilQLWrapper not initialized. Call init() first.");
-    }
-    const shares = await nilql.encrypt(this.secretKey, data);
-    return shares;
-  }
-
-  /**
-   * Decrypts data using the initialized secret key and provided shares
-   * @param {Array} shares - Array of encrypted shares to decrypt
-   * @throws {Error} If NilQLWrapper hasn't been initialized
-   * @returns {Promise<any>} The decrypted data
-   */
-  async decrypt(shares) {
-    if (!this.secretKey) {
-      throw new Error("NilQLWrapper not initialized. Call init() first.");
-    }
-    const decryptedData = await nilql.decrypt(this.secretKey, shares);
-    return decryptedData;
-  }
-}
-
 class SecretVaultWrapper {
     constructor(
         nodes,
         credentials,
         schemaId = null,
-        operation = 'store',
-        secretKey = null,
         secretKeySeed = null,
         tokenExpirySeconds = 36000000,
     ) {
@@ -176,11 +67,10 @@ class SecretVaultWrapper {
         this.nodesJwt = null;
         this.credentials = credentials;
         this.schemaId = schemaId;
-        this.operation = operation;
-        this.secretKey = secretKey;
         this.secretKeySeed = secretKeySeed;
         this.tokenExpirySeconds = tokenExpirySeconds;
-        this.nilqlWrapper = null;
+        this.secretKeyStore = null;
+        this.secretKeySum = null;
     }
 
     async init() {
@@ -191,23 +81,21 @@ class SecretVaultWrapper {
             }))
         );
         this.nodesJwt = nodeConfigs;
-        // Determine keyType
-        const keyType =
-          this.secretKey || this.secretKeySeed ? KeyType.SECRET : KeyType.CLUSTER;
-        this.nilqlWrapper = new NilQLWrapper(
-          { nodes: this.nodes },
-          this.operation,
-          this.secretKey,
-          this.secretKeySeed,
-          keyType,
-        );
-        await this.nilqlWrapper.init();
-        return this.nilqlWrapper;
-    }
 
-    setSchemaId(schemaId, operation = this.operation) {
-        this.schemaId = schemaId;
-        this.operation = operation;
+        // --- Generate both keys ---
+        this.secretKeyStore = await nilql.SecretKey.generate(
+            { nodes: this.nodes },
+            { store: true },
+            null,
+            this.secretKeySeed,
+        );
+        this.secretKeySum = await nilql.SecretKey.generate(
+            { nodes: this.nodes },
+            { sum: true },
+            null,
+            this.secretKeySeed,
+        );
+        return true;
     }
 
     async generateNodeToken(nodeDid) {
@@ -292,8 +180,13 @@ class SecretVaultWrapper {
         // Only generate a UUID for this record if not present and not updating
         const recordId = (!update && !item._id) ? uuidv4() : item._id;
         // Encrypt the entry field directly (assume it's a string)
-        const shares = await this.nilqlWrapper.encrypt(item.entry);
-        // For each node, create a message with the same _id and all other fields identical except entry
+        const shares = await nilql.encrypt(this.secretKeyStore, item.entry);
+        // Encrypt mood if present (as integer) using SUM key
+        let moodShares = null;
+        if (item.mood !== undefined && item.mood !== null && item.mood !== "") {
+          moodShares = await nilql.encrypt(this.secretKeySum, parseInt(item.mood, 10));
+        }
+        // For each node, create a message with the same _id and all other fields identical except entry (and mood)
         for (let i = 0; i < this.nodes.length; i++) {
           let nodeMessage;
           if (update) {
@@ -309,6 +202,10 @@ class SecretVaultWrapper {
               _id: recordId,
               entry: { "%share": shares[i] },
             };
+          }
+          // Add mood share if present
+          if (moodShares) {
+            nodeMessage.mood = { "%share": moodShares[i] };
           }
           allNodeRecords.push(nodeMessage);
         }
@@ -341,8 +238,6 @@ class SecretVaultWrapper {
         return record;
       });
       const transformedData = await this.encryptData(idData);
-      console.log('[writeToNodes] transformedData:', transformedData);
-
 
       const writeDataToNode = async (node, index) => {
         try {
@@ -352,7 +247,6 @@ class SecretVaultWrapper {
             schema: this.schemaId,
             data: nodeData,
           };
-          console.log('[writeToNodes] payload:', payload);
 
           const result = await this.makeRequest(
             node.url,
@@ -390,9 +284,9 @@ class SecretVaultWrapper {
     }
 
     async readFromNodes(filter = {}) {
-      const payload = { schema: this.schemaId, filter };
+        const payload = { schema: this.schemaId, filter };
 
-      const readDataFromNode = async (node) => {
+        const readDataFromNode = async (node) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
           const result = await this.makeRequest(
@@ -430,34 +324,57 @@ class SecretVaultWrapper {
       // Group records across nodes by _id and collect all shares
       const recordSharesMap = new Map();
       for (const nodeResult of results) {
-        if (nodeResult.data) {
-          for (const record of nodeResult.data) {
-            if (!record._id) continue;
-            if (!recordSharesMap.has(record._id)) {
-              recordSharesMap.set(record._id, []);
-            }
-            recordSharesMap.get(record._id).push(record.entry && record.entry["%share"]);
+          if (nodeResult.data) {
+              for (const record of nodeResult.data) {
+                  if (!record._id) continue;
+
+                  // Initialize if record._id is not yet in the map
+                  if (!recordSharesMap.has(record._id)) {
+                      recordSharesMap.set(record._id, { entry: [], mood: [] });
+                  }
+
+                  // Get the share object for the current record ID
+                  const sharesForRecord = recordSharesMap.get(record._id);
+
+                  // Push entry share if it exists
+                  sharesForRecord.entry.push(record.entry && record.entry["%share"]);
+
+                  // Push mood share if it exists
+                  sharesForRecord.mood.push(record.mood && record.mood["%share"]);
+              }
           }
-        }
       }
+
       // For each record, decrypt the entry from shares and merge other fields from the first occurrence
       const mergedRecords = [];
       for (const nodeResult of results) {
-        if (nodeResult.data) {
-          for (const record of nodeResult.data) {
-            if (!record._id) continue;
-            if (mergedRecords.some(r => r._id === record._id)) continue; // Already processed
-            const shares = recordSharesMap.get(record._id).filter(Boolean);
-            let decryptedEntry = null;
-            if (shares.length > 0) {
-              decryptedEntry = await this.nilqlWrapper.decrypt(shares);
-            }
-            mergedRecords.push({
-              ...record,
-              entry: decryptedEntry,
-            });
+          if (nodeResult.data) {
+              for (const record of nodeResult.data) {
+                  if (!record._id) continue;
+                  if (mergedRecords.some(r => r._id === record._id)) continue; // Already processed
+
+                  // Get shares from the combined map
+                  const sharesForRecord = recordSharesMap.get(record._id);
+                  const entryShares = sharesForRecord.entry.filter(Boolean);
+                  const moodShares = sharesForRecord.mood.filter(Boolean);
+
+                  let decryptedEntry = null;
+                  if (entryShares.length > 0) {
+                      decryptedEntry = await nilql.decrypt(this.secretKeyStore, entryShares);
+                  }
+
+                  const mergedRecord = {
+                      ...record,
+                      entry: decryptedEntry,
+                  };
+
+                  if (moodShares.length > 0) { // Decrypt mood only if shares exist
+                      let decryptedMood = await nilql.decrypt(this.secretKeySum, moodShares);
+                      mergedRecord.mood = Number(decryptedMood);
+                  }
+                  mergedRecords.push(mergedRecord);
+              }
           }
-        }
       }
       // Remove duplicates (keep only one per _id)
       const uniqueRecords = Array.from(new Map(mergedRecords.map(r => [r._id, r])).values());
@@ -473,7 +390,6 @@ class SecretVaultWrapper {
     async updateDataToNodes(recordUpdate, filter = {}) {
       const transformedData = await this.encryptData([recordUpdate], true);
 
-      console.log('[updateDataToNodes] transformedData:', transformedData);
       const updateDataOnNode = async (node, index) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
@@ -561,9 +477,9 @@ class SecretVaultWrapper {
         }
 
         try {
-            const jwt = await this.generateNodeToken(node.did);
-            const result = await this.makeRequest(
-                node.url,
+          const jwt = await this.generateNodeToken(node.did);
+          const result = await this.makeRequest(
+            node.url,
                 'queries/execute', // Endpoint for query execution
                 jwt,
                 queryPayload
@@ -821,6 +737,8 @@ function initializeReflectionsApp() {
             ? tagsText.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
             : [];
 
+        // Mood
+        const moodValue = document.getElementById('entry-mood')?.value;
         // Save entry to nilDB
         const message_for_nildb = {
             uuid: uuid,
@@ -828,6 +746,7 @@ function initializeReflectionsApp() {
             entry: entryText,
             tags: tagsArray
         };
+        if (moodValue) message_for_nildb.mood = moodValue;
 
         // Show loading state
         const savingSpinner = document.getElementById('saving-entry-spinner');
@@ -849,7 +768,7 @@ function initializeReflectionsApp() {
             }
 
             // Add the 'date' property here, using currentSelectedDate
-            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate });
+            data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate, mood: moodValue });
             saveData(data);
 
             // Clear the input fields
@@ -976,6 +895,7 @@ function initializeReflectionsApp() {
             }
 
             const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
+
             const entries = processFetchedEntries(dataReadFromNilDB);
 
             // Update local storage (optional, maybe only cache date-based fetches?)
@@ -1106,7 +1026,8 @@ function initializeReflectionsApp() {
                 timestamp: entry._created,
                 text: entry.entry,
                 tags: entry.tags,
-                date: entry.date
+                date: entry.date,
+                mood: entry.mood
             }));
     }
 
@@ -1165,7 +1086,7 @@ function initializeReflectionsApp() {
         // Create a copy before sorting to avoid modifying the original array passed in
         const sortedEntries = [...entries].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        sortedEntries.forEach((entry) => {
+        sortedEntries.forEach(async (entry) => {
             const entryCard = document.createElement('div');
             entryCard.className = 'card entry-card mb-3';
             entryCard.style.cursor = 'pointer'; // Make it look clickable
@@ -1189,22 +1110,39 @@ function initializeReflectionsApp() {
             // Optional: Use formatDisplayDate(reflectionDate) for fuller format
             const formattedReflectionDate = formatDisplayDate(reflectionDate);
 
+            // Mood display
+            let moodHtml = '';
+            if (entry.mood) {
+                const moodEmojis = {
+                    1: { emoji: '😞', label: 'Very Bad' },
+                    2: { emoji: '😕', label: 'Bad' },
+                    3: { emoji: '😐', label: 'Neutral' },
+                    4: { emoji: '🙂', label: 'Good' },
+                    5: { emoji: '😄', label: 'Very Good' },
+                };
+                const moodObj = moodEmojis[entry.mood];
+                if (moodObj) {
+                    moodHtml = `<span class="entry-mood-emoji ms-2" title="Mood: ${moodObj.label}">${moodObj.emoji}</span>`;
+                }
+            }
+
             entryCard.innerHTML = `
-                <div class=\"card-body\">
-                    <div class=\"d-flex justify-content-between align-items-start\">
-                        <div class=\"entry-meta mb-2\">
-                            <span class=\"entry-timestamp small text-muted\">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="entry-meta mb-2">
+                            <span class="entry-timestamp small text-muted">
                                 Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
                             </span>
+                            ${moodHtml}
                         </div>
-                        <div class=\"d-flex gap-1\">
-                          <button class=\"btn btn-outline-secondary btn-sm entry-edit-btn\" title=\"Edit this memory\" data-entry-id=\"${entry.id}\"><i class=\"fas fa-edit\"></i></button>
-                          <button class=\"btn btn-outline-danger btn-sm entry-delete-btn\" title=\"Delete this memory\" data-entry-id=\"${entry.id}\"><i class=\"fas fa-trash\"></i></button>
+                        <div class="d-flex gap-1">
+                          <button class="btn btn-outline-secondary btn-sm entry-edit-btn" title="Edit this memory" data-entry-id="${entry.id}"><i class="fas fa-edit"></i></button>
+                          <button class="btn btn-outline-danger btn-sm entry-delete-btn" title="Delete this memory" data-entry-id="${entry.id}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <p class=\"card-text entry-text\">${entry.text}</p>
+                    <p class="card-text entry-text">${entry.text}</p>
                     <!-- Container for Tags -->
-                    <div class=\"entry-tags-container mt-2\">
+                    <div class="entry-tags-container mt-2">
                         <!-- Tags will be injected here by JS -->
                     </div>
                 </div>
@@ -1497,7 +1435,7 @@ function initializeReflectionsApp() {
 
             // Show the response in a modal
             if (result.choices && result.choices[0] && result.choices[0].message) {
-                 showLLMResponseModal(result.choices[0].message.content);
+            showLLMResponseModal(result.choices[0].message.content);
             } else {
                 throw new Error("Invalid response structure from API");
             }
@@ -2014,10 +1952,10 @@ function initializeAuth() {
 
     // Function to generate and set UUID
     function setUuid() {
-        // Check if UUID span element exists
-        if (uuidSpan) {
-            const newUuid = uuidv4();
-            uuidSpan.textContent = newUuid;
+            // Check if UUID span element exists
+            if (uuidSpan) {
+                const newUuid = uuidv4();
+                uuidSpan.textContent = newUuid;
         }
     }
 
@@ -2036,11 +1974,8 @@ function initializeAuth() {
         }
         try {
             // Store the instance in appState
-            appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, 'store', null, seed);
+            appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, seed);
             await appState.collection.init();
-
-            appState.collection_sum = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, 'sum', null, seed);
-            await appState.collection_sum.init();
         } catch (error) {
             console.error("Failed to initialize collection:", error);
             showWarningModal(`Error initializing connection: ${error.message}`);
@@ -2100,7 +2035,7 @@ function initializeAuth() {
 
                 // Insert after the identifier span
                 if (userDisplaySpan.parentNode) {
-                    userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
+                userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
                 }
             }
 
@@ -2144,7 +2079,7 @@ function initializeAuth() {
             // Basic password validation (example)
             if (password.length < 8) {
                  showWarningModal('Password must be at least 8 characters long.');
-                 return;
+                return;
             }
 
             // Save the auth data
@@ -2191,10 +2126,10 @@ function initializeAuth() {
             // Close the modal if initialization was successful (or handle error)
              if (appState.collection) {
                  if (authModalElement) {
-                     authModalElement.hide();
+            authModalElement.hide();
                  }
-                 // Display the logged-in user
-                 displayLoggedInUser(uuid);
+            // Display the logged-in user
+            displayLoggedInUser(uuid);
                  // Run initial query after login
                  runAndLogInitialQuery();
              } else {
@@ -2325,7 +2260,7 @@ function initializeAuth() {
     if (savedUuid && savedPassword) {
         // Wrap in an async IIFE to use await for initialization
         (async () => {
-            displayLoggedInUser(savedUuid);
+        displayLoggedInUser(savedUuid);
             await initializeCollection(savedPassword); // Ensure collection is initialized
             // Run initial query on page load if logged in
             runAndLogInitialQuery();

@@ -65,7 +65,7 @@
                                 <input type="password" class="form-control" id="register-password" placeholder="Enter your password">
                             </div>
                             <div class="d-flex justify-content-between align-items-center mt-3">
-                                <button id="register-button" class="btn btn-accent">Register</button>
+                            <button id="register-button" class="btn btn-accent">Register</button>
                                 <button type="button" class="btn btn-outline-warning" id="connect-metamask-btn" title="Pre-fill Unique Identifier with your wallet address">
                                      <i class="fas fa-wallet me-1"></i>Connect Wallet
                                  </button>
@@ -81,7 +81,7 @@
                                 <input type="password" class="form-control" id="login-password" placeholder="Enter your password">
                             </div>
                             <div class="d-flex justify-content-between align-items-center mt-3">
-                                <button id="login-button" class="btn btn-accent">Login</button>
+                            <button id="login-button" class="btn btn-accent">Login</button>
                                 <button type="button" class="btn btn-outline-warning" id="connect-metamask-btn" title="Pre-fill Unique Identifier with your wallet address">
                                      <i class="fas fa-wallet me-1"></i>Connect Wallet
                                  </button>
@@ -169,15 +169,15 @@
                 <div class="mt-3">
                     <!-- Wrapper for Textarea and Mic Button -->
                     <div class="position-relative mb-2">
-                        <textarea
-                            id="private-reflection-input"
+                    <textarea
+                        id="private-reflection-input"
                             class="form-control"
-                            placeholder="Let's do some private reflections..."
-                            aria-label="Private Reflection"
-                            rows="2"
+                        placeholder="Let's do some private reflections..."
+                        aria-label="Private Reflection"
+                        rows="2"
                             style="resize: vertical; padding-right: 40px;" /* Add padding for button */
-                        ></textarea>
-                        <button id="mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation" style="position: absolute; right: 5px; top: 5px; bottom: 5px; width: 30px; display: flex; align-items: center; justify-content: center; border: none;">
+                    ></textarea>
+                        <button id="mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation">
                              <i id="mic-icon" class="fas fa-microphone"></i>
                         </button>
                         <span id="speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
@@ -194,13 +194,13 @@
                          <!-- Button Group for Ask LLM + Model Selection -->
                          <div class="btn-group" id="ask-llm-button-group">
                              <!-- Main Action Button -->
-                             <button
+                        <button
                                  type="button"
-                                 id="ask-secret-llm-btn"
+                            id="ask-secret-llm-btn"
                                  class="btn btn-accent ask-llm-btn-main"
                                  data-selected-model="" /* Store selected model here */
-                             >
-                                 Ask SecretLLM
+                        >
+                            Ask SecretLLM
                                  <span id="llm-model-display" class="d-block selected-model-display">Loading...</span>
                              </button>
                              <!-- Dropdown Toggle Button (Gear Icon) -->
@@ -214,7 +214,7 @@
                              >
                                  <i class="fas fa-cog"></i>
                                  <span class="visually-hidden">Toggle Dropdown</span>
-                             </button>
+                        </button>
                              <!-- Dropdown Menu -->
                              <ul class="dropdown-menu" id="model-select-dropdown-menu">
                                  <li><a class="dropdown-item disabled" href="#">Loading...</a></li>
@@ -259,27 +259,47 @@
 
                         <!-- Content moved from #entry-form-container -->
                         <div id="entry-form-content">
-                            <div class="mb-3">
-                                <div class="position-relative">
-                                    <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..." style="padding-right: 40px;" aria-label="Memory text input"></textarea>
-                                    <button id="entry-mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation" style="position: absolute; right: 5px; top: 5px; bottom: 5px; width: 30px; display: flex; align-items: center; justify-content: center; border: none;">
-                                         <i id="entry-mic-icon" class="fas fa-microphone"></i>
-                                    </button>
-                                    <span id="entry-speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
-                                </div>
+                            <div class="mb-3 position-relative d-flex align-items-center" style="gap: 0.5rem;">
+                                <textarea class="form-control" id="entry-text" rows="3" placeholder="Write your thoughts for this day..." style="padding-right: 40px;" aria-label="Memory text input"></textarea>
+                                <i class="fas fa-info-circle text-muted"
+                                   style="cursor: help;"
+                                   data-bs-toggle="tooltip"
+                                   data-bs-placement="top"
+                                   title="Memory stays private using SecretVaults."></i>
+                                <button id="entry-mic-button" class="btn btn-sm mic-control-button" title="Start/Stop Dictation">
+                                    <i id="entry-mic-icon" class="fas fa-microphone"></i>
+                                </button>
+                                <span id="entry-speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
                             </div>
-                            <div class="mb-3 position-relative">
+                            <div class="mb-3 d-flex justify-content-end align-items-center position-relative" style="gap: 0.5rem;">
                                 <input type="text" class="form-control form-control-sm" id="entry-tags" placeholder="Tags: e.g., work, idea (comma-separated)" style="padding-right: 30px;">
                                 <i class="fas fa-info-circle text-muted"
-                                   style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: help;"
+                                   style="cursor: help;"
                                    data-bs-toggle="tooltip"
                                    data-bs-placement="top"
                                    title="Tags are metadata, use them with caution."></i>
                             </div>
+                            <div class="mb-3 d-flex justify-content-between align-items-center" style="gap: 0.5rem;">
                             <button type="button" class="btn btn-accent" id="save-entry-btn"><i class="fas fa-save me-1"></i>Save Memory</button>
+                                <div class="d-flex align-items-center" style="gap: 0.5rem;">
+                                    <select id="entry-mood" class="form-select form-select-sm" style="max-width: 200px;">
+                                        <option value="">Select Mood</option>
+                                        <option value="1">😞 Very Bad</option>
+                                        <option value="2">😕 Bad</option>
+                                        <option value="3">😐 Neutral</option>
+                                        <option value="4">🙂 Good</option>
+                                        <option value="5">😄 Very Good</option>
+                                    </select>
+                                    <i class="fas fa-info-circle text-muted"
+                                       style="cursor: help;"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="Mood is not metadata and stays private, even for aggregations, which use SecretVaults Analytics."></i>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                        </div>
 
                 <!-- Card 2: Retrieved Entries List (Initially hidden) -->
                 <div class="card border-0 shadow-sm" id="retrieved-entries-card" style="display: none;">
@@ -293,15 +313,15 @@
                         </div>
 
                         <!-- Message shown when no entries exist for the selected date -->
-                        <div id="no-entries-message" style="display: none;">
-                            <div class="text-center p-4">
-                                <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
-                                <p>No memories for this date yet. Write your first memory!</p>
+                            <div id="no-entries-message" style="display: none;">
+                                <div class="text-center p-4">
+                                    <i class="fas fa-pencil fs-1 mb-3 text-secondary"></i>
+                                    <p>No memories for this date yet. Write your first memory!</p>
+                                </div>
                             </div>
-                        </div>
 
                         <!-- List where entries will be displayed -->
-                        <div id="entries-list" class="entries-scrollable"></div>
+                            <div id="entries-list" class="entries-scrollable"></div>
                     </div>
                 </div>
             </div>

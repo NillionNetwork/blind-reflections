@@ -15381,9 +15381,7 @@ if (cid) {
   // index.js
   window.Buffer = import_buffer.Buffer;
   var appState = {
-    collection: null,
-    // Holds the SecretVaultWrapper instance
-    collection_sum: null
+    collection: null
     // Holds the SecretVaultWrapper instance
   };
   var NILDB = {
@@ -15406,101 +15404,21 @@ if (cid) {
       }
     ]
   };
-  var SCHEMA = "35969a5c-a698-4110-bd18-921078bf7759";
-  var AGGREGATION = "1749d382-356b-4314-80c0-28f7075b4359";
+  var SCHEMA = "a3388a06-e722-4cfa-aba7-2c36eeaca983";
+  var AGGREGATION = "2cc2c020-a56a-4ac8-8136-d7a4d7eb5d65";
   var NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
   var NIL_API_TOKEN = "Nillion2025";
   var DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
-  var KeyType = {
-    CLUSTER: "cluster",
-    SECRET: "secret"
-  };
-  var OperationType = {
-    STORE: "store",
-    SUM: "sum",
-    MATCH: "match"
-  };
-  var NilQLWrapper = class {
-    constructor(cluster, operation = OperationType.STORE, secretKey = null, secretKeySeed = null, keyType = KeyType.CLUSTER) {
-      this.cluster = cluster;
-      this.secretKey = secretKey;
-      this.secretKeySeed = secretKeySeed;
-      this.operation = {
-        [operation]: true
-      };
-      this.keyType = keyType;
-    }
-    /**
-     * Initializes the NilQLWrapper by generating and storing a secret key
-     * for the cluster. This must be called before any encryption/decryption operations.
-     * @returns {Promise<void>}
-     */
-    async init() {
-      if (this.secretKeySeed && this.secretKey === null) {
-        this.secretKey = await nilql.SecretKey.generate(
-          this.cluster,
-          this.operation,
-          null,
-          this.secretKeySeed
-        );
-      }
-      if (this.secretKey === null) {
-        switch (this.keyType) {
-          case KeyType.SECRET:
-            this.secretKey = await nilql.SecretKey.generate(
-              this.cluster,
-              this.operation
-            );
-            break;
-          case KeyType.CLUSTER:
-            this.secretKey = await nilql.ClusterKey.generate(
-              this.cluster,
-              this.operation
-            );
-            break;
-          default:
-            throw new Error("Unsupported key type");
-        }
-      }
-    }
-    /**
-     * Encrypts data using the initialized secret key
-     * @param {any} data - The data to encrypt
-     * @throws {Error} If NilQLWrapper hasn't been initialized
-     * @returns {Promise<Array>} Array of encrypted shares
-     */
-    async encrypt(data) {
-      if (!this.secretKey) {
-        throw new Error("NilQLWrapper not initialized. Call init() first.");
-      }
-      const shares = await nilql.encrypt(this.secretKey, data);
-      return shares;
-    }
-    /**
-     * Decrypts data using the initialized secret key and provided shares
-     * @param {Array} shares - Array of encrypted shares to decrypt
-     * @throws {Error} If NilQLWrapper hasn't been initialized
-     * @returns {Promise<any>} The decrypted data
-     */
-    async decrypt(shares) {
-      if (!this.secretKey) {
-        throw new Error("NilQLWrapper not initialized. Call init() first.");
-      }
-      const decryptedData = await nilql.decrypt(this.secretKey, shares);
-      return decryptedData;
-    }
-  };
   var SecretVaultWrapper = class {
-    constructor(nodes, credentials, schemaId = null, operation = "store", secretKey = null, secretKeySeed = null, tokenExpirySeconds = 36e6) {
+    constructor(nodes, credentials, schemaId = null, secretKeySeed = null, tokenExpirySeconds = 36e6) {
       this.nodes = nodes;
       this.nodesJwt = null;
       this.credentials = credentials;
       this.schemaId = schemaId;
-      this.operation = operation;
-      this.secretKey = secretKey;
       this.secretKeySeed = secretKeySeed;
       this.tokenExpirySeconds = tokenExpirySeconds;
-      this.nilqlWrapper = null;
+      this.secretKeyStore = null;
+      this.secretKeySum = null;
     }
     async init() {
       const nodeConfigs = await Promise.all(
@@ -15510,20 +15428,19 @@ if (cid) {
         }))
       );
       this.nodesJwt = nodeConfigs;
-      const keyType = this.secretKey || this.secretKeySeed ? KeyType.SECRET : KeyType.CLUSTER;
-      this.nilqlWrapper = new NilQLWrapper(
+      this.secretKeyStore = await nilql.SecretKey.generate(
         { nodes: this.nodes },
-        this.operation,
-        this.secretKey,
-        this.secretKeySeed,
-        keyType
+        { store: true },
+        null,
+        this.secretKeySeed
       );
-      await this.nilqlWrapper.init();
-      return this.nilqlWrapper;
-    }
-    setSchemaId(schemaId, operation = this.operation) {
-      this.schemaId = schemaId;
-      this.operation = operation;
+      this.secretKeySum = await nilql.SecretKey.generate(
+        { nodes: this.nodes },
+        { sum: true },
+        null,
+        this.secretKeySeed
+      );
+      return true;
     }
     async generateNodeToken(nodeDid) {
       const signer = ES256KSigner(import_buffer.Buffer.from(this.credentials.secretKey, "hex"));
@@ -15598,7 +15515,11 @@ if (cid) {
       const allNodeRecords = [];
       for (const item of data) {
         const recordId = !update && !item._id ? v4_default() : item._id;
-        const shares = await this.nilqlWrapper.encrypt(item.entry);
+        const shares = await nilql.encrypt(this.secretKeyStore, item.entry);
+        let moodShares = null;
+        if (item.mood !== void 0 && item.mood !== null && item.mood !== "") {
+          moodShares = await nilql.encrypt(this.secretKeySum, parseInt(item.mood, 10));
+        }
         for (let i3 = 0; i3 < this.nodes.length; i3++) {
           let nodeMessage;
           if (update) {
@@ -15612,6 +15533,9 @@ if (cid) {
               _id: recordId,
               entry: { "%share": shares[i3] }
             };
+          }
+          if (moodShares) {
+            nodeMessage.mood = { "%share": moodShares[i3] };
           }
           allNodeRecords.push(nodeMessage);
         }
@@ -15641,7 +15565,6 @@ if (cid) {
         return record;
       });
       const transformedData = await this.encryptData(idData);
-      console.log("[writeToNodes] transformedData:", transformedData);
       const writeDataToNode = async (node, index) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
@@ -15650,7 +15573,6 @@ if (cid) {
             schema: this.schemaId,
             data: nodeData
           };
-          console.log("[writeToNodes] payload:", payload);
           const result = await this.makeRequest(
             node.url,
             "data/create",
@@ -15723,9 +15645,11 @@ if (cid) {
           for (const record of nodeResult.data) {
             if (!record._id) continue;
             if (!recordSharesMap.has(record._id)) {
-              recordSharesMap.set(record._id, []);
+              recordSharesMap.set(record._id, { entry: [], mood: [] });
             }
-            recordSharesMap.get(record._id).push(record.entry && record.entry["%share"]);
+            const sharesForRecord = recordSharesMap.get(record._id);
+            sharesForRecord.entry.push(record.entry && record.entry["%share"]);
+            sharesForRecord.mood.push(record.mood && record.mood["%share"]);
           }
         }
       }
@@ -15735,15 +15659,22 @@ if (cid) {
           for (const record of nodeResult.data) {
             if (!record._id) continue;
             if (mergedRecords.some((r3) => r3._id === record._id)) continue;
-            const shares = recordSharesMap.get(record._id).filter(Boolean);
+            const sharesForRecord = recordSharesMap.get(record._id);
+            const entryShares = sharesForRecord.entry.filter(Boolean);
+            const moodShares = sharesForRecord.mood.filter(Boolean);
             let decryptedEntry = null;
-            if (shares.length > 0) {
-              decryptedEntry = await this.nilqlWrapper.decrypt(shares);
+            if (entryShares.length > 0) {
+              decryptedEntry = await nilql.decrypt(this.secretKeyStore, entryShares);
             }
-            mergedRecords.push({
+            const mergedRecord = {
               ...record,
               entry: decryptedEntry
-            });
+            };
+            if (moodShares.length > 0) {
+              let decryptedMood = await nilql.decrypt(this.secretKeySum, moodShares);
+              mergedRecord.mood = Number(decryptedMood);
+            }
+            mergedRecords.push(mergedRecord);
           }
         }
       }
@@ -15758,7 +15689,6 @@ if (cid) {
      */
     async updateDataToNodes(recordUpdate, filter = {}) {
       const transformedData = await this.encryptData([recordUpdate], true);
-      console.log("[updateDataToNodes] transformedData:", transformedData);
       const updateDataOnNode = async (node, index) => {
         try {
           const jwt = await this.generateNodeToken(node.did);
@@ -16023,12 +15953,14 @@ if (cid) {
         return;
       }
       const tagsArray = tagsText ? tagsText.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "") : [];
+      const moodValue = document.getElementById("entry-mood")?.value;
       const message_for_nildb = {
         uuid,
         date: currentSelectedDate,
         entry: entryText,
         tags: tagsArray
       };
+      if (moodValue) message_for_nildb.mood = moodValue;
       const savingSpinner = document.getElementById("saving-entry-spinner");
       if (saveEntryBtn) saveEntryBtn.disabled = true;
       if (savingSpinner) savingSpinner.style.display = "inline-block";
@@ -16043,7 +15975,7 @@ if (cid) {
         if (!data[currentSelectedDate]) {
           data[currentSelectedDate] = [];
         }
-        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate });
+        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate, mood: moodValue });
         saveData(data);
         entryTextArea2.value = "";
         tagsInput.value = "";
@@ -16223,7 +16155,8 @@ if (cid) {
         timestamp: entry._created,
         text: entry.entry,
         tags: entry.tags,
-        date: entry.date
+        date: entry.date,
+        mood: entry.mood
       }));
     }
     const memoryQueue = [];
@@ -16263,7 +16196,7 @@ if (cid) {
       noEntriesMessageEl.style.display = "none";
       entriesListEl.style.display = "block";
       const sortedEntries = [...entries].sort((a, b2) => new Date(b2.timestamp) - new Date(a.timestamp));
-      sortedEntries.forEach((entry) => {
+      sortedEntries.forEach(async (entry) => {
         const entryCard = document.createElement("div");
         entryCard.className = "card entry-card mb-3";
         entryCard.style.cursor = "pointer";
@@ -16280,6 +16213,20 @@ if (cid) {
         });
         const reflectionDate = entry.date;
         const formattedReflectionDate = formatDisplayDate(reflectionDate);
+        let moodHtml = "";
+        if (entry.mood) {
+          const moodEmojis = {
+            1: { emoji: "\u{1F61E}", label: "Very Bad" },
+            2: { emoji: "\u{1F615}", label: "Bad" },
+            3: { emoji: "\u{1F610}", label: "Neutral" },
+            4: { emoji: "\u{1F642}", label: "Good" },
+            5: { emoji: "\u{1F604}", label: "Very Good" }
+          };
+          const moodObj = moodEmojis[entry.mood];
+          if (moodObj) {
+            moodHtml = `<span class="entry-mood-emoji ms-2" title="Mood: ${moodObj.label}">${moodObj.emoji}</span>`;
+          }
+        }
         entryCard.innerHTML = `
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
@@ -16287,6 +16234,7 @@ if (cid) {
                             <span class="entry-timestamp small text-muted">
                                 Generated on ${formattedCreationDate} at ${formattedCreationTime} for ${formattedReflectionDate}
                             </span>
+                            ${moodHtml}
                         </div>
                         <div class="d-flex gap-1">
                           <button class="btn btn-outline-secondary btn-sm entry-edit-btn" title="Edit this memory" data-entry-id="${entry.id}"><i class="fas fa-edit"></i></button>
@@ -16943,10 +16891,8 @@ ${memoryContext}`
         return;
       }
       try {
-        appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, "store", null, seed);
+        appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, seed);
         await appState.collection.init();
-        appState.collection_sum = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, "sum", null, seed);
-        await appState.collection_sum.init();
       } catch (error) {
         console.error("Failed to initialize collection:", error);
         showWarningModal(`Error initializing connection: ${error.message}`);

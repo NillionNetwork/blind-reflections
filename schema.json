@@ -27,6 +27,17 @@
           "%share"
         ]
       },
+      "mood": {
+        "type": "object",
+        "properties": {
+          "%share": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "%share"
+        ]
+      },
       "tags": {
         "type": "array",
         "items": {

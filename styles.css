@@ -746,3 +746,50 @@ header {
 .entry-edit-btn:hover .fas, .entry-edit-btn:focus .fas {
   color: var(--accent-color) !important;
 }
+
+.mood-emoji {
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, background 0.1s;
+  border-radius: 50%;
+  padding: 2px 6px;
+  margin-right: 2px;
+}
+.mood-emoji.selected {
+  background: var(--accent-light, #e0f7fa);
+  box-shadow: 0 0 0 2px var(--accent-color, #3CAEA3);
+  transform: scale(1.25);
+}
+
+#add-entry-card .mb-3 {
+  margin-bottom: 0.25rem !important;
+}
+
+#save-entry-btn {
+  margin-top: 0.75rem !important;
+}
+
+/* Consistent positioning for mic buttons */
+#entry-mic-button {
+  position: absolute;
+  right: 30px;
+  top: 5px;
+  bottom: 5px;
+  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+/* Consistent positioning for mic buttons */
+#mic-button {
+  position: absolute;
+  right: 15px;
+  top: 5px;
+  bottom: 5px;
+  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
