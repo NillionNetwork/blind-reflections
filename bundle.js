@@ -15963,7 +15963,6 @@ if (cid) {
     let calendar;
     const saveEntryBtn = document.getElementById("save-entry-btn");
     const entriesLoadingSpinner = document.getElementById("entries-loading-spinner");
-    const STORAGE_KEY = "blind_reflections_data";
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.map(function(tooltipTriggerEl) {
       return new bootstrap.Tooltip(tooltipTriggerEl);
@@ -16008,25 +16007,6 @@ if (cid) {
       month: "long",
       day: "numeric"
     });
-    function loadData() {
-      const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
-      const uuid = authData?.uuid;
-      if (!uuid) {
-        console.error("No UUID found. Cannot load data.");
-        return {};
-      }
-      const data = localStorage.getItem(`${STORAGE_KEY}_${uuid}`);
-      return data ? JSON.parse(data) : {};
-    }
-    function saveData(data) {
-      const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
-      const uuid = authData?.uuid;
-      if (!uuid) {
-        console.error("No UUID found. Cannot save data.");
-        return;
-      }
-      localStorage.setItem(`${STORAGE_KEY}_${uuid}`, JSON.stringify(data));
-    }
     async function saveEntry() {
       if (!currentSelectedDate) return;
       const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
@@ -16037,8 +16017,8 @@ if (cid) {
         if (authModal) authModal.show();
         return;
       }
-      const entryTextArea2 = document.getElementById("entry-text");
-      const entryText = entryTextArea2.value.trim();
+      const entryTextArea = document.getElementById("entry-text");
+      const entryText = entryTextArea.value.trim();
       const tagsInput = document.getElementById("entry-tags");
       const tagsText = tagsInput ? tagsInput.value.trim() : "";
       if (!entryText) {
@@ -16066,19 +16046,10 @@ if (cid) {
         if (!appState.collection) {
           throw new Error("Collection not initialized. Please log in.");
         }
-        const dataWritten = await appState.collection.writeToNodes([message_for_nildb]);
-        const recordId = dataWritten[0]?.data?.created?.[0];
-        const data = loadData();
-        const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-        if (!data[currentSelectedDate]) {
-          data[currentSelectedDate] = [];
-        }
-        data[currentSelectedDate].push({ text: entryText, id: recordId, timestamp, tags: tagsArray, date: currentSelectedDate, mood: moodValue });
-        saveData(data);
-        entryTextArea2.value = "";
+        await appState.collection.writeToNodes([message_for_nildb]);
+        entryTextArea.value = "";
         tagsInput.value = "";
-        displayEntries(data[currentSelectedDate]);
-        markDateWithEntriesHelper(currentSelectedDate);
+        await fetchEntriesByDate(currentSelectedDate);
         const entriesList = document.getElementById("entries-list");
         if (entriesList) {
           entriesList.scrollTop = 0;
@@ -16090,19 +16061,6 @@ if (cid) {
       } finally {
         if (saveEntryBtn) saveEntryBtn.disabled = false;
         if (savingSpinner) savingSpinner.style.display = "none";
-      }
-    }
-    function markDatesWithEntries() {
-      const data = loadData();
-      Object.keys(data).forEach((dateStr) => {
-        markDateWithEntriesHelper(dateStr);
-      });
-    }
-    function markDateWithEntriesHelper(dateStr) {
-      if (!calendar) return;
-      const dateEl = calendar.el.querySelector(`.fc-day[data-date="${dateStr}"]`);
-      if (dateEl) {
-        dateEl.classList.add("fc-day-has-entries");
       }
     }
     function formatDisplayDate(dateStr) {
@@ -16156,9 +16114,6 @@ if (cid) {
         }
         const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, date: dateStr });
         const entries = processFetchedEntries(dataReadFromNilDB);
-        const data = loadData();
-        data[dateStr] = entries;
-        saveData(data);
         displayEntries(entries);
       } catch (error) {
         console.error("Failed to read data by date from nilDB:", error);
@@ -16413,15 +16368,14 @@ if (cid) {
         const authData = JSON.parse(sessionStorage.getItem("blind_reflections_auth"));
         const uuid = authData?.uuid;
         if (!uuid) throw new Error("No UUID found. Please log in again.");
-        const data = loadData();
         let entryDate = null;
-        for (const date in data) {
-          if (data[date].some((e3) => e3.id === entryIdToEdit)) {
-            entryDate = date;
-            break;
-          }
+        const dataReadFromNilDB = await appState.collection.readFromNodes({ uuid, _id: entryIdToEdit });
+        const entryData = processFetchedEntries(dataReadFromNilDB)[0];
+        if (entryData) {
+          entryDate = entryData.date;
+        } else {
+          throw new Error("Could not determine entry date.");
         }
-        if (!entryDate) throw new Error("Could not determine entry date.");
         const recordUpdate = {
           uuid,
           date: entryDate,
@@ -16430,14 +16384,8 @@ if (cid) {
         };
         const filter = { _id: entryIdToEdit };
         await appState.collection.updateDataToNodes(recordUpdate, filter);
-        if (data[entryDate]) {
-          data[entryDate] = data[entryDate].map(
-            (e3) => e3.id === entryIdToEdit ? { ...e3, text: editText, tags: tagsArray } : e3
-          );
-          saveData(data);
-        }
         if (currentSelectedDate) {
-          displayEntries(data[currentSelectedDate]);
+          await fetchEntriesByDate(currentSelectedDate);
         }
         const modal = bootstrap.Modal.getInstance(document.getElementById("edit-entry-modal"));
         if (modal) modal.hide();
@@ -16454,13 +16402,8 @@ if (cid) {
       try {
         if (!appState.collection) throw new Error("Collection not initialized");
         await appState.collection.deleteDataFromNodes({ _id: entryIdToDelete });
-        const data = loadData();
-        for (const date in data) {
-          data[date] = data[date].filter((entry) => entry.id !== entryIdToDelete);
-        }
-        saveData(data);
         if (currentSelectedDate) {
-          displayEntries(data[currentSelectedDate]);
+          await fetchEntriesByDate(currentSelectedDate);
         }
         const modal = bootstrap.Modal.getInstance(document.getElementById("delete-confirm-modal"));
         if (modal) modal.hide();
@@ -16611,16 +16554,12 @@ ${memoryContext}`
       dateClick: function(info) {
         selectDate(info.dateStr);
       },
-      datesSet: function() {
-        markDatesWithEntries();
-      },
       contentHeight: "auto",
       // Ensure no vertical scrolling
       height: "auto"
       // Automatically adjust height to remove scrollbar
     });
     calendar.render();
-    markDatesWithEntries();
     document.getElementById("save-entry-btn").addEventListener("click", saveEntry);
     const tagLogicDropdownMenu = document.getElementById("tag-logic-dropdown-menu");
     const tagSearchButtonForLogic = document.getElementById("tag-search-button");
@@ -16653,164 +16592,89 @@ ${memoryContext}`
       });
     }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const micButton = document.getElementById("mic-button");
-    const micIcon = document.getElementById("mic-icon");
-    const reflectionInput = document.getElementById("private-reflection-input");
-    const speechStatus = document.getElementById("speech-status");
-    let recognition;
-    let isRecording = false;
-    if (SpeechRecognition && micButton && reflectionInput && speechStatus && micIcon) {
-      recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      micButton.addEventListener("click", () => {
-        if (isRecording) {
-          recognition.stop();
-        } else {
-          try {
-            recognition.start();
-          } catch (error) {
-            console.error("Error starting speech recognition:", error);
-            showWarningModal("Could not start dictation. Please check microphone permissions or try again.");
-            isRecording = false;
-            micIcon.className = "fas fa-microphone";
-            speechStatus.style.display = "none";
+    function setupSpeechRecognition(buttonId, iconId, inputId, statusId) {
+      const micButton = document.getElementById(buttonId);
+      const micIcon = document.getElementById(iconId);
+      const inputElement = document.getElementById(inputId);
+      const speechStatus = document.getElementById(statusId);
+      let recognition;
+      let isRecording = false;
+      if (SpeechRecognition && micButton && inputElement && speechStatus && micIcon) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        micButton.addEventListener("click", () => {
+          if (isRecording) {
+            recognition.stop();
+          } else {
+            try {
+              recognition.start();
+            } catch (error) {
+              console.error(`Error starting speech recognition for ${inputId}:`, error);
+              showWarningModal(`Could not start dictation for ${inputElement.ariaLabel || "input"}. Please check microphone permissions or try again.`);
+              isRecording = false;
+              micIcon.className = "fas fa-microphone";
+              speechStatus.style.display = "none";
+            }
           }
-        }
-      });
-      recognition.onstart = () => {
-        isRecording = true;
-        micIcon.className = "fas fa-stop-circle text-danger";
-        speechStatus.textContent = "Listening...";
-        speechStatus.style.display = "inline";
-      };
-      recognition.onresult = (event) => {
-        let finalTranscript = "";
-        for (let i3 = event.resultIndex; i3 < event.results.length; ++i3) {
-          if (event.results[i3].isFinal) {
-            finalTranscript += event.results[i3][0].transcript;
+        });
+        recognition.onstart = () => {
+          isRecording = true;
+          micIcon.className = "fas fa-stop-circle text-danger";
+          speechStatus.textContent = "Listening...";
+          speechStatus.style.display = "inline";
+        };
+        recognition.onresult = (event) => {
+          let finalTranscript = "";
+          for (let i3 = event.resultIndex; i3 < event.results.length; ++i3) {
+            if (event.results[i3].isFinal) {
+              finalTranscript += event.results[i3][0].transcript;
+            }
           }
-        }
-        if (finalTranscript) {
-          const currentText = reflectionInput.value;
-          const separator = currentText.length > 0 && !/\s$/.test(currentText) ? " " : "";
-          reflectionInput.value += separator + finalTranscript.trim() + " ";
-          speechStatus.textContent = 'Added: "' + finalTranscript.trim() + '" ';
-          setTimeout(() => {
-            if (isRecording) speechStatus.textContent = "Listening...";
-          }, 1500);
-        }
-      };
-      recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        let errorMessage = "An unknown error occurred during dictation.";
-        switch (event.error) {
-          case "no-speech":
-            errorMessage = "No speech was detected. Microphone might be muted or setup incorrectly.";
-            break;
-          case "audio-capture":
-            errorMessage = "Microphone not available. Check if it's connected and enabled.";
-            break;
-          case "not-allowed":
-            errorMessage = "Microphone permission denied. Please allow access in browser settings.";
-            break;
-          case "network":
-            errorMessage = "Network error during speech recognition. Check connection.";
-            break;
-        }
-        showWarningModal(errorMessage);
-        isRecording = false;
-        micIcon.className = "fas fa-microphone";
-        speechStatus.style.display = "none";
-      };
-      recognition.onend = () => {
-        isRecording = false;
-        micIcon.className = "fas fa-microphone";
-        speechStatus.style.display = "none";
-      };
-    } else {
-      if (micButton) micButton.style.display = "none";
-      console.warn("Web Speech API not supported or mic elements missing.");
+          if (finalTranscript) {
+            const currentText = inputElement.value;
+            const separator = currentText.length > 0 && !/\s$/.test(currentText) ? " " : "";
+            inputElement.value += separator + finalTranscript.trim() + " ";
+            speechStatus.textContent = 'Added: "' + finalTranscript.trim() + '" ';
+            setTimeout(() => {
+              if (isRecording) speechStatus.textContent = "Listening...";
+            }, 1500);
+          }
+        };
+        recognition.onerror = (event) => {
+          console.error(`Speech recognition error for ${inputId}:`, event.error);
+          let errorMessage = `An unknown error occurred during dictation for ${inputElement.ariaLabel || "input"}.`;
+          switch (event.error) {
+            case "no-speech":
+              errorMessage = "No speech was detected. Microphone might be muted or setup incorrectly.";
+              break;
+            case "audio-capture":
+              errorMessage = "Microphone not available. Check if it's connected and enabled.";
+              break;
+            case "not-allowed":
+              errorMessage = "Microphone permission denied. Please allow access in browser settings.";
+              break;
+            case "network":
+              errorMessage = "Network error during speech recognition. Check connection.";
+              break;
+          }
+          showWarningModal(errorMessage);
+          isRecording = false;
+          micIcon.className = "fas fa-microphone";
+          speechStatus.style.display = "none";
+        };
+        recognition.onend = () => {
+          isRecording = false;
+          micIcon.className = "fas fa-microphone";
+          speechStatus.style.display = "none";
+        };
+      } else {
+        if (micButton) micButton.style.display = "none";
+        console.warn(`Web Speech API not supported or elements missing for ${buttonId}.`);
+      }
     }
-    const entryMicButton = document.getElementById("entry-mic-button");
-    const entryMicIcon = document.getElementById("entry-mic-icon");
-    const entryTextArea = document.getElementById("entry-text");
-    const entrySpeechStatus = document.getElementById("entry-speech-status");
-    let entryRecognition;
-    let isEntryRecording = false;
-    if (SpeechRecognition && entryMicButton && entryTextArea && entrySpeechStatus && entryMicIcon) {
-      entryRecognition = new SpeechRecognition();
-      entryRecognition.continuous = true;
-      entryRecognition.interimResults = true;
-      entryMicButton.addEventListener("click", () => {
-        if (isEntryRecording) {
-          entryRecognition.stop();
-        } else {
-          try {
-            entryRecognition.start();
-          } catch (error) {
-            console.error("Error starting entry speech recognition:", error);
-            showWarningModal("Could not start dictation for entry. Please check microphone permissions or try again.");
-            isEntryRecording = false;
-            entryMicIcon.className = "fas fa-microphone";
-            entrySpeechStatus.style.display = "none";
-          }
-        }
-      });
-      entryRecognition.onstart = () => {
-        isEntryRecording = true;
-        entryMicIcon.className = "fas fa-stop-circle text-danger";
-        entrySpeechStatus.textContent = "Listening...";
-        entrySpeechStatus.style.display = "inline";
-      };
-      entryRecognition.onresult = (event) => {
-        let finalTranscript = "";
-        for (let i3 = event.resultIndex; i3 < event.results.length; ++i3) {
-          if (event.results[i3].isFinal) {
-            finalTranscript += event.results[i3][0].transcript;
-          }
-        }
-        if (finalTranscript) {
-          const currentText = entryTextArea.value;
-          const separator = currentText.length > 0 && !/\s$/.test(currentText) ? " " : "";
-          entryTextArea.value += separator + finalTranscript.trim() + " ";
-          entrySpeechStatus.textContent = 'Added: "' + finalTranscript.trim() + '" ';
-          setTimeout(() => {
-            if (isEntryRecording) entrySpeechStatus.textContent = "Listening...";
-          }, 1500);
-        }
-      };
-      entryRecognition.onerror = (event) => {
-        console.error("Entry speech recognition error:", event.error);
-        let errorMessage = "An unknown error occurred during entry dictation.";
-        switch (event.error) {
-          case "no-speech":
-            errorMessage = "No speech was detected. Microphone might be muted or setup incorrectly.";
-            break;
-          case "audio-capture":
-            errorMessage = "Microphone not available. Check if it's connected and enabled.";
-            break;
-          case "not-allowed":
-            errorMessage = "Microphone permission denied. Please allow access in browser settings.";
-            break;
-          case "network":
-            errorMessage = "Network error during speech recognition. Check connection.";
-            break;
-        }
-        showWarningModal(errorMessage);
-        isEntryRecording = false;
-        entryMicIcon.className = "fas fa-microphone";
-        entrySpeechStatus.style.display = "none";
-      };
-      entryRecognition.onend = () => {
-        isEntryRecording = false;
-        entryMicIcon.className = "fas fa-microphone";
-        entrySpeechStatus.style.display = "none";
-      };
-    } else {
-      if (entryMicButton) entryMicButton.style.display = "none";
-      console.warn("Web Speech API not supported or entry mic elements missing.");
-    }
+    setupSpeechRecognition("mic-button", "mic-icon", "private-reflection-input", "speech-status");
+    setupSpeechRecognition("entry-mic-button", "entry-mic-icon", "entry-text", "entry-speech-status");
   }
   function ensureHistogramElements() {
     let section = document.getElementById("histogram-section");
