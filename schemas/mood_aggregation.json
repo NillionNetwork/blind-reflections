@@ -1,0 +1,47 @@
+{
+  "variables": {
+    "user_uuid": {
+      "type": "string",
+      "description": "Filter by specific user UUID (required)"
+    },
+    "dates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of dates to filter on (OR-ed together)"
+    }
+  },
+  "pipeline": [
+    {
+      "$match": {
+        "$and": [
+          { "uuid": "##user_uuid" },
+          { "date": { "$in": "##dates" } },
+          { "mood.%share": { "$exists": true, "$ne": null } }
+        ]
+      }
+    },
+    {
+      "$group": {
+        "_id": null,
+        "total_mood": { "$sum": "$mood.%share" },
+        "count": { "$sum": 1 }
+      }
+    },
+    {
+      "$project": {
+        "_id": 0,
+        "aggregated_mood": {
+          "%share": {
+            "$mod": [
+              "$total_mood",
+              { "$add": [{ "$pow": [2, 32] }, 15] }
+            ]
+          }
+        },
+        "count": "$count"
+      }
+    }
+  ]
+}

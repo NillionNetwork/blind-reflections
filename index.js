@@ -2,22 +2,8 @@ import { Buffer } from 'buffer';
 import { v4 as uuidv4 } from 'uuid';
 import { createJWT, ES256KSigner } from 'did-jwt';
 import { nilql } from "@nillion/nilql";
-// import { secretvaults } from "secretvaults";
 
 window.Buffer = Buffer; // Required for in-browser use of eciesjs.
-
-// SHA-256 Helper using Web Crypto API
-async function sha256(message) {
-    // encode as UTF-8
-    const msgBuffer = new TextEncoder().encode(message);
-    // hash the message
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    // convert ArrayBuffer to Array
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    // convert bytes to hex string
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex;
-}
 
 // Application state container
 const appState = {
@@ -48,11 +34,12 @@ const NILDB = {
 
 // The `memory` and `mood` entries are stored with shares
 const SCHEMA = 'a3388a06-e722-4cfa-aba7-2c36eeaca983';
-const AGGREGATION = '2cc2c020-a56a-4ac8-8136-d7a4d7eb5d65';
+const TAG_AGGREGATION = '2cc2c020-a56a-4ac8-8136-d7a4d7eb5d65';
+const MOOD_AGGREGATION = '87925cd5-f894-4889-b0f8-32c067099547';
 
-// --- Constants --- (Moved Bearer token here)
+// --- Constants ---
 const NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
-const NIL_API_TOKEN = "Nillion2025"; // TODO: Secure this token
+const NIL_API_TOKEN = "Nillion2025";
 const DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
 
 class SecretVaultWrapper {
@@ -480,9 +467,9 @@ class SecretVaultWrapper {
           const jwt = await this.generateNodeToken(node.did);
           const result = await this.makeRequest(
             node.url,
-                'queries/execute', // Endpoint for query execution
-                jwt,
-                queryPayload
+                 'queries/execute',
+                  jwt,
+                  queryPayload
             );
 
             // Check if the request itself resulted in an error structure
@@ -502,7 +489,6 @@ class SecretVaultWrapper {
                 data: result.data || [], // Use the 'data' field from makeRequest result
             };
         } catch (error) {
-            // Catch errors from generateNodeToken or unexpected issues in makeRequest
             console.error(`❌ Failed to execute query on ${node.url}:`, error.message);
             return {
                 node: node.url,
@@ -510,6 +496,138 @@ class SecretVaultWrapper {
                 error: error.message || "An unknown error occurred",
             };
         }
+    }
+
+    /**
+     * Executes a query on all configured nodes, groups the results by _id,
+     * and unifies the shares to reconstruct the original records.
+     *
+     * @param {object} queryPayload - The query payload to execute (e.g., { id: QUERY_ID, variables: { ... } }).
+     * @returns {Promise<Array<object>>} - A promise resolving to an array of unified records.
+     */
+    async executeQueryOnNodes(queryPayload) {
+        // Execute queries in parallel on all nodes
+        const resultsFromAllNodes = await Promise.all(
+            this.nodes.map(node => this.executeQueryOnSingleNode(node, queryPayload))
+        );
+
+        // Filter out any node results that resulted in an error
+        const successfulNodeResults = resultsFromAllNodes.filter(result => !result.error && Array.isArray(result.data));
+
+        // --- Aggregation Result Handling ---
+        if (successfulNodeResults.length === 0) {
+            console.warn("[executeQueryOnNodes] No successful results from any node.");
+            return []; // No data to process
+        }
+
+        // Collect all aggregated_mood shares from all successful nodes
+        const allAggregatedMoodShares = [];
+        successfulNodeResults.forEach(nodeResult => {
+            nodeResult.data.forEach(record => {
+                if (record && record.aggregated_mood && record.aggregated_mood["%share"]) {
+                    allAggregatedMoodShares.push(record.aggregated_mood["%share"]);
+                }
+            });
+        });
+
+        // Get the count from the first successful record (assuming count is consistent)
+        // Find the first result that actually has data
+        const firstResultWithData = successfulNodeResults.find(r => r.data.length > 0);
+        const count = firstResultWithData ? firstResultWithData.data[0].count : null;
+
+        let decryptedAggregatedMood = null;
+        let finalResult = {};
+
+        try {
+            // Decrypt aggregated_mood using all collected shares
+            if (allAggregatedMoodShares.length > 0) {
+                decryptedAggregatedMood = await nilql.decrypt(this.secretKeySum, allAggregatedMoodShares);
+                decryptedAggregatedMood = Number(decryptedAggregatedMood);
+            }
+
+            // Construct the single result object
+            finalResult = {
+                count: count, // Use the count obtained earlier
+            };
+
+            // Add the decrypted mood if decryption was successful
+            if (decryptedAggregatedMood !== null && !isNaN(decryptedAggregatedMood)) {
+                finalResult.aggregated_mood = decryptedAggregatedMood;
+            }
+        } catch (error) {
+            console.error(`❌ Failed to decrypt aggregated_mood shares:`, error);
+            // Return partial data or empty array on decryption failure
+             finalResult = {
+                count: count, // Still return the count if available
+                error: "Failed to decrypt aggregated mood"
+            };
+        }
+
+        // Return the single aggregated result within an array
+        return [finalResult];
+    }
+}
+
+// Mood Emojis Map (Moved to higher scope for reuse)
+const moodEmojis = {
+    1: { emoji: '😞', label: 'Very Bad' },
+    2: { emoji: '😕', label: 'Bad' },
+    3: { emoji: '😐', label: 'Neutral' },
+    4: { emoji: '🙂', label: 'Good' },
+    5: { emoji: '😄', label: 'Very Good' },
+};
+
+// Function to display the aggregated mood and count for the day
+function displayDailyMood(mood, count) {
+    const displayEl = document.getElementById('daily-mood-display');
+    if (!displayEl) return;
+
+    if (mood !== null && mood !== undefined && count !== null && count !== undefined) {
+        const moodObj = moodEmojis[Math.round(mood)];
+        const moodEmoji = moodObj ? moodObj.emoji : '?';
+        const moodLabel = moodObj ? moodObj.label : '?';
+        const countText = count === 1 ? '1 memory' : `${count} memories`;
+        displayEl.textContent = `Overall mood of the day: ${moodLabel} ${moodEmoji} (${countText})`;
+    } else {
+        displayEl.textContent = '';
+    }
+}
+
+// Function to fetch and display the aggregated mood for a specific date
+async function fetchAndDisplayDailyMood(dateStr) {
+    // Clear previous mood display first
+    displayDailyMood(null, null);
+
+    const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+    const currentUserUuid = authData?.uuid;
+
+    if (!currentUserUuid || !appState.collection) {
+        console.warn("Cannot fetch daily mood: User not logged in or collection not initialized.");
+        return;
+    }
+
+    const queryPayload = {
+        id: MOOD_AGGREGATION,
+        variables: {
+            user_uuid: currentUserUuid,
+            dates: [dateStr]
+        }
+    };
+
+    try {
+        const results = await appState.collection.executeQueryOnNodes(queryPayload);
+
+        if (results && results.length > 0) {
+            const dailyData = results[0];
+            const count = dailyData.count;
+            const mood = (count > 0) ? (dailyData.aggregated_mood / count) : null; // Avoid division by zero
+            displayDailyMood(mood, count);
+        } else {
+            displayDailyMood(null, null);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to execute or process mood aggregation query for date ${dateStr}:`, error);
+        displayDailyMood(null, null); // Clear display on error
     }
 }
 
@@ -866,11 +984,15 @@ function initializeReflectionsApp() {
         // Hide "no date selected" message
         document.getElementById('no-date-message').style.display = 'none';
 
-        // Show loading animation
+        // Show loading animation for entries
         if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block'; // Show spinner
 
         // Fetch and display entries for the selected date
         await fetchEntriesByDate(dateStr); // Call the refactored function
+
+        // --- Fetch and display daily mood ---
+        await fetchAndDisplayDailyMood(dateStr);
+        // -------------------------------------
 
         // Clear the tag search input when a date is selected
         const tagInput = document.getElementById('tag-search-input');
@@ -1113,13 +1235,7 @@ function initializeReflectionsApp() {
             // Mood display
             let moodHtml = '';
             if (entry.mood) {
-                const moodEmojis = {
-                    1: { emoji: '😞', label: 'Very Bad' },
-                    2: { emoji: '😕', label: 'Bad' },
-                    3: { emoji: '😐', label: 'Neutral' },
-                    4: { emoji: '🙂', label: 'Good' },
-                    5: { emoji: '😄', label: 'Very Good' },
-                };
+                // Use the globally defined moodEmojis map
                 const moodObj = moodEmojis[entry.mood];
                 if (moodObj) {
                     moodHtml = `<span class="entry-mood-emoji ms-2" title="Mood: ${moodObj.label}">${moodObj.emoji}</span>`;
@@ -1870,9 +1986,9 @@ async function runAndLogInitialQuery() {
 
     const targetNode = NILDB.nodes[0]; // Use the first node
     const queryPayload = {
-        id: AGGREGATION, // Use the AGGREGATION constant as the query ID
+        id: TAG_AGGREGATION,
         variables: {
-             uuid: currentUserUuid // Provide the required uuid variable
+             uuid: currentUserUuid
         }
     };
 
