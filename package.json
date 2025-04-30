@@ -20,6 +20,9 @@
     "uuid": "^11.0.5"
   },
   "devDependencies": {
-    "esbuild": "0.25.3"
+    "@eslint/js": "^9.25.1",
+    "esbuild": "0.25.3",
+    "eslint": "^9.25.1",
+    "globals": "^16.0.0"
   }
 }

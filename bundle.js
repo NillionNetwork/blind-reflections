@@ -15507,11 +15507,11 @@ if (cid) {
       }
     }
     /**
-     * Transforms data by encrypting specified fields across all nodes
-     * @param {object|array} data - Data to transform
-     * @param {array} fieldsToEncrypt - Fields to encrypt
-     * @returns {Promise<array>} Array of transformed data for each node
-     */
+    * Transforms data by encrypting specified fields across all nodes
+    * @param {object|array} data - Data to transform
+    * @param {array} fieldsToEncrypt - Fields to encrypt
+    * @returns {Promise<array>} Array of transformed data for each node
+    */
     async encryptData(data, update = false) {
       const allNodeRecords = [];
       for (const item of data) {
@@ -15683,11 +15683,11 @@ if (cid) {
       return uniqueRecords;
     }
     /**
-     * Updates data on all nodes, with optional field encryption
-     * @param {array} recordUpdate - Data to update
-     * @param {object} filter - Filter criteria for which records to update
-     * @returns {Promise<array>} Array of update results from each node
-     */
+    * Updates data on all nodes, with optional field encryption
+    * @param {array} recordUpdate - Data to update
+    * @param {object} filter - Filter criteria for which records to update
+    * @returns {Promise<array>} Array of update results from each node
+    */
     async updateDataToNodes(recordUpdate, filter = {}) {
       const transformedData = await this.encryptData([recordUpdate], true);
       const updateDataOnNode = async (node, index) => {
@@ -15753,12 +15753,12 @@ if (cid) {
       return results;
     }
     /**
-     * Executes a query on a single node and returns the results.
-     *
-     * @param {object} node - The target node object (should contain 'url' and 'did').
-     * @param {object} queryPayload - The query payload to execute.
-     * @returns {Promise<object>} - A promise resolving to the query response from the node.
-     */
+    * Executes a query on a single node and returns the results.
+    *
+    * @param {object} node - The target node object (should contain 'url' and 'did').
+    * @param {object} queryPayload - The query payload to execute.
+    * @returns {Promise<object>} - A promise resolving to the query response from the node.
+    */
     async executeQueryOnSingleNode(node, queryPayload) {
       if (!node || !node.url || !node.did) {
         console.error("\u274C Invalid node object provided:", node);
@@ -15801,12 +15801,12 @@ if (cid) {
       }
     }
     /**
-     * Executes a query on all configured nodes, groups the results by _id,
-     * and unifies the shares to reconstruct the original records.
-     *
-     * @param {object} queryPayload - The query payload to execute (e.g., { id: QUERY_ID, variables: { ... } }).
-     * @returns {Promise<Array<object>>} - A promise resolving to an array of unified records.
-     */
+    * Executes a query on all configured nodes, groups the results by _id,
+    * and unifies the shares to reconstruct the original records.
+    *
+    * @param {object} queryPayload - The query payload to execute (e.g., { id: QUERY_ID, variables: { ... } }).
+    * @returns {Promise<Array<object>>} - A promise resolving to an array of unified records.
+    */
     async executeQueryOnNodes(queryPayload) {
       const resultsFromAllNodes = await Promise.all(
         this.nodes.map((node) => this.executeQueryOnSingleNode(node, queryPayload))
@@ -15824,7 +15824,6 @@ if (cid) {
           }
         });
       });
-      console.log(`[executeQueryOnNodes] All aggregated mood shares:`, allAggregatedMoodShares);
       const firstResultWithData = successfulNodeResults.find((r3) => r3.data.length > 0);
       const count = firstResultWithData ? firstResultWithData.data[0].count : null;
       let decryptedAggregatedMood = null;
@@ -15841,7 +15840,6 @@ if (cid) {
         if (decryptedAggregatedMood !== null && !isNaN(decryptedAggregatedMood)) {
           finalResult.aggregated_mood = decryptedAggregatedMood;
         }
-        console.log(`[executeQueryOnNodes] Final result:`, finalResult);
       } catch (error) {
         console.error(`\u274C Failed to decrypt aggregated_mood shares:`, error);
         finalResult = {
@@ -15893,7 +15891,7 @@ if (cid) {
       if (results && results.length > 0) {
         const dailyData = results[0];
         const count = dailyData.count;
-        const mood = dailyData.aggregated_mood / count;
+        const mood = count > 0 ? dailyData.aggregated_mood / count : null;
         displayDailyMood(mood, count);
       } else {
         displayDailyMood(null, null);
@@ -15964,12 +15962,10 @@ if (cid) {
     let currentSelectedDate = null;
     let calendar;
     const saveEntryBtn = document.getElementById("save-entry-btn");
-    const saveEntryBtnOriginalContent = saveEntryBtn ? saveEntryBtn.innerHTML : "";
     const entriesLoadingSpinner = document.getElementById("entries-loading-spinner");
-    const histogramLoadingEl = document.getElementById("histogram-loading");
     const STORAGE_KEY = "blind_reflections_data";
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    const tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+    tooltipTriggerList.map(function(tooltipTriggerEl) {
       return new bootstrap.Tooltip(tooltipTriggerEl);
     });
     try {
@@ -16180,7 +16176,7 @@ if (cid) {
         if (entriesLoadingSpinner2) entriesLoadingSpinner2.style.display = "none";
       }
     }
-    async function fetchEntriesByTag(tagsArray, logic) {
+    async function fetchEntriesByTag(tagsArray) {
       const entriesLoadingSpinner2 = document.getElementById("entries-loading-spinner");
       const retrievedTitleEl = document.getElementById("retrieved-entries-title");
       const tagSearchButton2 = document.getElementById("tag-search-button");
@@ -16645,8 +16641,7 @@ ${memoryContext}`
       tagSearchButton.addEventListener("click", () => {
         const tagsArray = tagSearchInput.value.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "");
         if (tagsArray.length > 0) {
-          const selectedLogic = tagSearchButton.dataset.selectedLogic || "OR";
-          fetchEntriesByTag(tagsArray, selectedLogic);
+          fetchEntriesByTag(tagsArray);
         } else {
           showWarningModal("Please enter at least one tag to search.");
         }
@@ -16690,13 +16685,10 @@ ${memoryContext}`
         speechStatus.style.display = "inline";
       };
       recognition.onresult = (event) => {
-        let interimTranscript = "";
         let finalTranscript = "";
         for (let i3 = event.resultIndex; i3 < event.results.length; ++i3) {
           if (event.results[i3].isFinal) {
             finalTranscript += event.results[i3][0].transcript;
-          } else {
-            interimTranscript += event.results[i3][0].transcript;
           }
         }
         if (finalTranscript) {
@@ -16772,13 +16764,10 @@ ${memoryContext}`
         entrySpeechStatus.style.display = "inline";
       };
       entryRecognition.onresult = (event) => {
-        let interimTranscript = "";
         let finalTranscript = "";
         for (let i3 = event.resultIndex; i3 < event.results.length; ++i3) {
           if (event.results[i3].isFinal) {
             finalTranscript += event.results[i3][0].transcript;
-          } else {
-            interimTranscript += event.results[i3][0].transcript;
           }
         }
         if (finalTranscript) {
@@ -17178,7 +17167,7 @@ ${memoryContext}`
       try {
         const parsedAuth = JSON.parse(savedAuth);
         savedPassword = parsedAuth.password;
-      } catch (e3) {
+      } catch {
         savedPassword = null;
       }
     }
