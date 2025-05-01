@@ -16434,14 +16434,10 @@ if (cid) {
                           <button class="btn btn-outline-danger btn-sm entry-delete-btn" title="Delete this memory" data-entry-id="${entry.id}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <p class="card-text entry-text">${entry.text}</p>
+                    <p class="card-text entry-text"></p> <!-- Removed static text, will be filled by Markdown -->
                     <!-- Container for Tags -->
-                    <div class="entry-tags-container mt-2">
+                    <div class="entry-tags-container mt-1"> <!-- Changed mt-2 to mt-1 -->
                         <!-- Tags will be injected here by JS -->
-                    </div>
-                    <!-- Container for Image -->
-                    <div class="entry-image-container mt-2">
-                        <!-- Image will be injected here by JS -->
                     </div>
                 </div>
             `;
@@ -16456,9 +16452,17 @@ if (cid) {
             });
           }
         }
+        const entryTextContainer = entryCard.querySelector(".entry-text");
+        if (entryTextContainer && entry.text) {
+          entryTextContainer.innerHTML = marked.parse(entry.text);
+        } else if (entryTextContainer) {
+          entryTextContainer.textContent = "";
+        }
         if (Array.isArray(entry.file) && entry.file.length > 0 && entry.file_name) {
-          const imageContainer = entryCard.querySelector(".entry-image-container");
-          if (imageContainer) {
+          const imageContainer = document.createElement("div");
+          imageContainer.className = "entry-image-container mt-1";
+          const cardBody = entryCard.querySelector(".card-body");
+          if (cardBody) {
             try {
               const chunksAsUint8Array = entry.file.map((chunk) => {
                 if (chunk instanceof Uint8Array) return chunk;
@@ -16478,12 +16482,14 @@ if (cid) {
               imgElement.style.maxHeight = "100px";
               imgElement.style.marginTop = "5px";
               imageContainer.appendChild(imgElement);
+              cardBody.appendChild(imageContainer);
             } catch (error) {
               console.error(`[Debug] Error processing/displaying image for entry ${entry.id}:`, error);
               const errorMsg = document.createElement("span");
               errorMsg.className = "text-danger small";
               errorMsg.textContent = "Error displaying image.";
               imageContainer.appendChild(errorMsg);
+              cardBody.appendChild(imageContainer);
             }
           }
         }
@@ -16857,6 +16863,14 @@ ${memoryContext}`
     }
     setupSpeechRecognition("mic-button", "mic-icon", "private-reflection-input", "speech-status");
     setupSpeechRecognition("entry-mic-button", "entry-mic-icon", "entry-text", "entry-speech-status");
+    document.querySelectorAll(".markdown-btn").forEach((button) => {
+      button.addEventListener("click", () => {
+        const textareaId = button.dataset.textareaId;
+        const format = button.dataset.format;
+        console.log(`[Debug Markdown] Button clicked! textareaId: ${textareaId}, format: ${format}`);
+        wrapTextWithMarkdown(textareaId, format);
+      });
+    });
   }
   function ensureHistogramElements() {
     let section = document.getElementById("histogram-section");
@@ -17300,6 +17314,41 @@ ${memoryContext}`
       modelDisplaySpan.textContent = firstModelId;
       askLlmButton.dataset.selectedModel = firstModelId;
     }
+  }
+  function wrapTextWithMarkdown(textareaId, format) {
+    console.log(`[Debug Markdown] wrapTextWithMarkdown called with textareaId: ${textareaId}, format: ${format}`);
+    const textarea = document.getElementById(textareaId);
+    if (!textarea) {
+      console.error(`[Debug Markdown] Textarea with ID '${textareaId}' not found!`);
+      return;
+    }
+    console.log(`[Debug Markdown] Found textarea:`, textarea);
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+    let markdownText = selectedText;
+    let cursorOffset = 0;
+    switch (format) {
+      case "bold":
+        markdownText = `**${selectedText}**`;
+        cursorOffset = 2;
+        break;
+      case "italic":
+        markdownText = `*${selectedText}*`;
+        cursorOffset = 1;
+        break;
+      case "strikethrough":
+        markdownText = `~~${selectedText}~~`;
+        cursorOffset = 2;
+        break;
+    }
+    textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+    if (selectedText.length === 0) {
+      textarea.selectionStart = textarea.selectionEnd = start + cursorOffset;
+    } else {
+      textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+    }
+    textarea.focus();
   }
   document.addEventListener("DOMContentLoaded", function() {
     initializeReflectionsApp();

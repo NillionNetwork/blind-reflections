@@ -1,4 +1,4 @@
-/* global bootstrap, FullCalendar */
+/* global bootstrap, FullCalendar, marked */
 
 import { Buffer } from 'buffer';
 import { v4 as uuidv4 } from 'uuid';
@@ -1387,14 +1387,10 @@ function initializeReflectionsApp() {
                           <button class="btn btn-outline-danger btn-sm entry-delete-btn" title="Delete this memory" data-entry-id="${entry.id}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <p class="card-text entry-text">${entry.text}</p>
+                    <p class="card-text entry-text"></p> <!-- Removed static text, will be filled by Markdown -->
                     <!-- Container for Tags -->
-                    <div class="entry-tags-container mt-2">
+                    <div class="entry-tags-container mt-1"> <!-- Changed mt-2 to mt-1 -->
                         <!-- Tags will be injected here by JS -->
-                    </div>
-                    <!-- Container for Image -->
-                    <div class="entry-image-container mt-2">
-                        <!-- Image will be injected here by JS -->
                     </div>
                 </div>
             `;
@@ -1412,10 +1408,27 @@ function initializeReflectionsApp() {
         }
       }
 
+      // Parse and inject entry text as Markdown
+      const entryTextContainer = entryCard.querySelector('.entry-text');
+      if (entryTextContainer && entry.text) {
+        // Use marked.parse() to convert Markdown to HTML
+        // Ensure the output is sanitized if necessary, marked generally handles basic safety.
+        // For higher security, consider a dedicated sanitizer like DOMPurify.
+        entryTextContainer.innerHTML = marked.parse(entry.text);
+      } else if (entryTextContainer) {
+        entryTextContainer.textContent = ''; // Clear if no text
+      }
+
       // Inject image if it exists
       if (Array.isArray(entry.file) && entry.file.length > 0 && entry.file_name) {
-        const imageContainer = entryCard.querySelector('.entry-image-container');
-        if (imageContainer) {
+        // Dynamically create the container only if an image exists
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'entry-image-container mt-1';
+
+        // Find the card body to append to
+        const cardBody = entryCard.querySelector('.card-body');
+
+        if (cardBody) {
           try {
             // 1. Unchunk the bytes (entry.file contains decrypted chunks)
             // Ensure chunks are Uint8Array before passing to unchunkBytes
@@ -1445,15 +1458,19 @@ function initializeReflectionsApp() {
 
             imageContainer.appendChild(imgElement);
 
-            // Optional: Revoke URL when element is removed (more complex, skip for now)
-            // imgElement.onload = () => { /* URL.revokeObjectURL(imageUrl); // Too soon */ };
+            // Append the container with the image to the card body
+            cardBody.appendChild(imageContainer);
 
+            // Optional: Revoke URL when element is removed (more complex, skip for now)
+            // imgElement.onload = () => { URL.revokeObjectURL(imageUrl); };
           } catch (error) {
             console.error(`[Debug] Error processing/displaying image for entry ${entry.id}:`, error);
             const errorMsg = document.createElement('span');
             errorMsg.className = 'text-danger small';
             errorMsg.textContent = 'Error displaying image.';
             imageContainer.appendChild(errorMsg);
+            // Append the container even if there's an error to show the message
+            cardBody.appendChild(imageContainer);
           }
         }
       }
@@ -1951,6 +1968,16 @@ function initializeReflectionsApp() {
   // --- Speech Recognition Logic for Daily Entry ---
   // Setup using the reusable function
   setupSpeechRecognition('entry-mic-button', 'entry-mic-icon', 'entry-text', 'entry-speech-status');
+
+  // Add listeners for Markdown buttons
+  document.querySelectorAll('.markdown-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const textareaId = button.dataset.textareaId;
+      const format = button.dataset.format;
+      console.log(`[Debug Markdown] Button clicked! textareaId: ${textareaId}, format: ${format}`); // Added log
+      wrapTextWithMarkdown(textareaId, format);
+    });
+  });
 }
 
 function ensureHistogramElements() {
@@ -2559,6 +2586,53 @@ function ensureHistogramElements() {
       // Add active class to the first item visually if needed (optional)
       // modelDropdownMenu.querySelector('.dropdown-item')?.classList.add('active');
     }
+  }
+
+  // Helper function to wrap selected text in a textarea with Markdown syntax
+  function wrapTextWithMarkdown(textareaId, format) {
+    console.log(`[Debug Markdown] wrapTextWithMarkdown called with textareaId: ${textareaId}, format: ${format}`);
+    const textarea = document.getElementById(textareaId);
+    if (!textarea) {
+      console.error(`[Debug Markdown] Textarea with ID '${textareaId}' not found!`);
+      return;
+    }
+    console.log(`[Debug Markdown] Found textarea:`, textarea);
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+    let markdownText = selectedText;
+    let cursorOffset = 0; // To adjust cursor position after insertion
+
+    switch (format) {
+      case 'bold':
+        markdownText = `**${selectedText}**`;
+        cursorOffset = 2;
+        break;
+      case 'italic':
+        markdownText = `*${selectedText}*`;
+        cursorOffset = 1;
+        break;
+      case 'strikethrough':
+        markdownText = `~~${selectedText}~~`;
+        cursorOffset = 2;
+        break;
+      // Add cases for other formats like lists, links, etc. if needed
+    }
+
+    // Insert the formatted text back into the textarea
+    textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+
+    // Adjust cursor position
+    if (selectedText.length === 0) {
+      // If no text was selected, place cursor in the middle of the markdown syntax
+      textarea.selectionStart = textarea.selectionEnd = start + cursorOffset;
+    } else {
+      // If text was selected, place cursor after the inserted markdown text
+      textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+    }
+
+    textarea.focus(); // Keep focus on the textarea
   }
 
   // Single DOMContentLoaded listener to initialize both parts

@@ -16,6 +16,9 @@
 
     <!-- Custom CSS -->
     <link href="./styles.css" rel="stylesheet">
+
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <header class="bg-dark text-light">
@@ -271,6 +274,12 @@
                                 </button>
                                 <span id="entry-speech-status" class="text-muted small" style="position: absolute; right: 40px; top: 10px; display: none;">Listening...</span>
                             </div>
+                            <!-- Markdown Buttons for Add Entry -->
+                            <div class="mb-2 d-flex justify-content-start gap-2">
+                                <button type="button" class="btn btn-outline-secondary btn-sm markdown-btn" data-textarea-id="entry-text" data-format="bold" title="Bold"><b>B</b></button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm markdown-btn" data-textarea-id="entry-text" data-format="italic" title="Italic"><i>I</i></button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm markdown-btn" data-textarea-id="entry-text" data-format="strikethrough" title="Strikethrough"><del>S</del></button>
+                            </div>
                             <div class="mb-3 d-flex justify-content-end align-items-center position-relative" style="gap: 0.5rem;">
                                 <input type="text" class="form-control form-control-sm" id="entry-tags" placeholder="Tags: e.g., work, idea (comma-separated)" style="padding-right: 30px;">
                                 <i class="fas fa-info-circle text-muted"
@@ -441,6 +450,12 @@
             <div class="mb-3">
               <label for="edit-entry-text" class="form-label">Memory Text</label>
               <textarea class="form-control" id="edit-entry-text" rows="3"></textarea>
+            </div>
+            <!-- Markdown Buttons for Edit Entry -->
+            <div class="mb-2 d-flex justify-content-start gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm markdown-btn" data-textarea-id="edit-entry-text" data-format="bold" title="Bold"><b>B</b></button>
+                <button type="button" class="btn btn-outline-secondary btn-sm markdown-btn" data-textarea-id="edit-entry-text" data-format="italic" title="Italic"><i>I</i></button>
+                <button type="button" class="btn btn-outline-secondary btn-sm markdown-btn" data-textarea-id="edit-entry-text" data-format="strikethrough" title="Strikethrough"><del>S</del></button>
             </div>
             <div class="mb-3">
               <label for="edit-entry-tags" class="form-label">Tags (comma-separated)</label>
