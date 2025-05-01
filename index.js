@@ -34,15 +34,16 @@ const NILDB = {
   ],
 };
 
-// The `memory` and `mood` entries are stored with shares
-const SCHEMA = 'a3388a06-e722-4cfa-aba7-2c36eeaca983';
-const TAG_AGGREGATION = '2cc2c020-a56a-4ac8-8136-d7a4d7eb5d65';
-const MOOD_AGGREGATION = '87925cd5-f894-4889-b0f8-32c067099547';
+// The `memory`, `mood`, `file`, and `file_name` entries are stored with shares
+const SCHEMA = '0872b4f4-8e6c-4fe5-a3f3-4dfcaed9ddd3';
+const TAG_AGGREGATION = '8c7c4993-d486-40f3-916e-23b930764ab3';
+const MOOD_AGGREGATION = 'd2a6f4dd-3b2d-4333-864a-3af5b990a51c';
 
 // --- Constants ---
 const NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
 const NIL_API_TOKEN = "Nillion2025";
 const DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
+const CHUNK_SIZE = 2 * 1024; // 2 KB
 
 class SecretVaultWrapper {
   constructor(
@@ -169,33 +170,56 @@ class SecretVaultWrapper {
       // Only generate a UUID for this record if not present and not updating
       const recordId = (!update && !item._id) ? uuidv4() : item._id;
       // Encrypt the entry field directly (assume it's a string)
-      const shares = await nilql.encrypt(this.secretKeyStore, item.entry);
+      const entryShares = await nilql.encrypt(this.secretKeyStore, item.entry);
+
       // Encrypt mood if present (as integer) using SUM key
       let moodShares = null;
       if (item.mood !== undefined && item.mood !== null && item.mood !== "") {
         moodShares = await nilql.encrypt(this.secretKeySum, parseInt(item.mood, 10));
       }
-      // For each node, create a message with the same _id and all other fields identical except entry (and mood)
+
+      // Encrypt file chunks if present using STORE key
+      let allChunkShares = []; // Will hold arrays of shares, one array per chunk
+      let fileNameShares = null; // Will hold shares for the filename
+      if (Array.isArray(item.file) && item.file.length > 0) {
+        for (const chunk of item.file) {
+          // Assuming chunk is Uint8Array, nilql handles Buffer conversion if needed
+          const chunkShares = await nilql.encrypt(this.secretKeyStore, chunk);
+          allChunkShares.push(chunkShares);
+        }
+        // Also encrypt the filename if file exists
+        if (item.file_name) {
+          fileNameShares = await nilql.encrypt(this.secretKeyStore, item.file_name);
+        }
+      }
+
+      // For each node, create a message with the same _id and all other fields identical except encrypted ones
       for (let i = 0; i < this.nodes.length; i++) {
         let nodeMessage;
-        if (update) {
-          // For update, do not set or overwrite _id, just use the item as is
-          nodeMessage = {
-            ...item,
-            entry: { "%share": shares[i] },
-          };
-        } else {
-          // For create, ensure _id is set
-          nodeMessage = {
-            ...item,
-            _id: recordId,
-            entry: { "%share": shares[i] },
-          };
-        }
+        const baseMessage = update ? { ...item } : { ...item, _id: recordId }; // Handle _id based on update flag
+        nodeMessage = {
+          ...baseMessage,
+          entry: { "%share": entryShares[i] },
+        };
+
         // Add mood share if present
         if (moodShares) {
           nodeMessage.mood = { "%share": moodShares[i] };
         }
+
+        // Add file chunk shares if present
+        if (allChunkShares.length > 0) {
+          nodeMessage.file = [];
+          for (let j = 0; j < allChunkShares.length; j++) {
+            // Get the i-th share for the j-th chunk
+            nodeMessage.file.push({ "%share": allChunkShares[j][i] });
+          }
+          // Add encrypted file_name share if present
+          if (fileNameShares) {
+            nodeMessage.file_name = { "%share": fileNameShares[i] };
+          }
+        }
+
         allNodeRecords.push(nodeMessage);
       }
     }
@@ -319,55 +343,155 @@ class SecretVaultWrapper {
 
           // Initialize if record._id is not yet in the map
           if (!recordSharesMap.has(record._id)) {
-            recordSharesMap.set(record._id, { entry: [], mood: [] });
+            // Initialize with entry, mood, and optionally file/file_name
+            recordSharesMap.set(record._id, {
+              entry: [],
+              mood: [],
+              file: record.file ? record.file.map(() => []) : [], // Initialize based on first seen record's file structure
+              file_name: [], // Add for filename shares
+              firstRecordData: { ...record } // Store the first occurrence's non-shared data
+            });
           }
 
           // Get the share object for the current record ID
-          const sharesForRecord = recordSharesMap.get(record._id);
+          const recordData = recordSharesMap.get(record._id);
 
           // Push entry share if it exists
-          sharesForRecord.entry.push(record.entry && record.entry["%share"]);
+          recordData.entry.push(record.entry && record.entry["%share"]);
 
           // Push mood share if it exists
-          sharesForRecord.mood.push(record.mood && record.mood["%share"]);
+          if (record.mood && record.mood["%share"]) {
+            recordData.mood.push(record.mood["%share"]);
+          }
+
+          // Push file chunk shares if they exist
+          if (Array.isArray(record.file)) {
+            // Ensure the file structure in the map matches the current record
+            if (recordData.file.length !== record.file.length) {
+              // If first time seeing file or structure mismatch, initialize/resize
+              recordData.file = record.file.map(() => []);
+              // Update firstRecordData if this is the first record with file info
+              if (!recordData.firstRecordData.file) {
+                recordData.firstRecordData = { ...record };
+              }
+            }
+            record.file.forEach((chunkShareObj, chunkIndex) => {
+              if (chunkShareObj && chunkShareObj["%share"]) {
+                // Ensure the inner array exists for this chunk index
+                if (!recordData.file[chunkIndex]) {
+                   recordData.file[chunkIndex] = [];
+                }
+                recordData.file[chunkIndex].push(chunkShareObj["%share"]);
+              }
+            });
+          }
+
+          // Push file_name share if it exists
+          if (record.file_name && record.file_name["%share"]) {
+            // Initialize file_name array if needed (might not be present in firstRecordData)
+            if (!recordData.file_name) {
+              recordData.file_name = [];
+            }
+            recordData.file_name.push(record.file_name["%share"]);
+            // Update firstRecordData if this is the first time seeing file_name share structure
+            if (!recordData.firstRecordData.file_name || !recordData.firstRecordData.file_name["%share"]) {
+              // Update firstRecordData to include the structure, but value is irrelevant here
+              recordData.firstRecordData.file_name = { "%share": "placeholder" };
+            }
+          }
         }
       }
     }
 
-    // For each record, decrypt the entry from shares and merge other fields from the first occurrence
+    // For each record, decrypt the entry/mood/file from shares and merge other fields
     const mergedRecords = [];
-    for (const nodeResult of results) {
-      if (nodeResult.data) {
-        for (const record of nodeResult.data) {
-          if (!record._id) continue;
-          if (mergedRecords.some(r => r._id === record._id)) continue; // Already processed
+    for (const [_id, recordData] of recordSharesMap.entries()) {
+      const { entry: entryShares, mood: moodShares, file: fileChunkSharesArrays, file_name: fileNameShares, firstRecordData } = recordData;
 
-          // Get shares from the combined map
-          const sharesForRecord = recordSharesMap.get(record._id);
-          const entryShares = sharesForRecord.entry.filter(Boolean);
-          const moodShares = sharesForRecord.mood.filter(Boolean);
+      // Decrypt entry
+      let decryptedEntry = null;
+      const validEntryShares = entryShares.filter(Boolean);
+      if (validEntryShares.length > 0) {
+        decryptedEntry = await nilql.decrypt(this.secretKeyStore, validEntryShares);
+      }
 
-          let decryptedEntry = null;
-          if (entryShares.length > 0) {
-            decryptedEntry = await nilql.decrypt(this.secretKeyStore, entryShares);
+      // Decrypt mood
+      let decryptedMood = null;
+      const validMoodShares = moodShares.filter(Boolean);
+      if (validMoodShares.length > 0) {
+        const rawMood = await nilql.decrypt(this.secretKeySum, validMoodShares);
+        decryptedMood = Number(rawMood);
+      }
+
+      // Decrypt file chunks
+      let decryptedFileChunks = [];
+      let decryptedFileName = null;
+
+      if (Array.isArray(fileChunkSharesArrays) && fileChunkSharesArrays.length > 0) {
+        for (const chunkShares of fileChunkSharesArrays) {
+          const validChunkShares = chunkShares.filter(Boolean);
+          if (validChunkShares.length > 0) {
+            try {
+              const decryptedChunk = await nilql.decrypt(this.secretKeyStore, validChunkShares);
+              // nilql.decrypt might return Buffer, ensure it's Uint8Array if needed downstream
+              // For now, assume it's compatible or handle conversion later
+              decryptedFileChunks.push(decryptedChunk);
+            } catch (decryptError) {
+              console.error(`❌ Failed to decrypt file chunk for record ${_id}:`, decryptError);
+              // Decide how to handle partial decryption failure - skip file? add error indicator?
+              // For now, we'll continue, potentially resulting in an incomplete file array
+            }
           }
-
-          const mergedRecord = {
-            ...record,
-            entry: decryptedEntry,
-          };
-
-          if (moodShares.length > 0) { // Decrypt mood only if shares exist
-            let decryptedMood = await nilql.decrypt(this.secretKeySum, moodShares);
-            mergedRecord.mood = Number(decryptedMood);
-          }
-          mergedRecords.push(mergedRecord);
         }
       }
+
+      // Decrypt file_name (only if chunks were processed, implying file existed)
+      if (decryptedFileChunks.length > 0 && Array.isArray(fileNameShares) && fileNameShares.length > 0) {
+        const validFileNameShares = fileNameShares.filter(Boolean);
+        if (validFileNameShares.length > 0) {
+          try {
+            decryptedFileName = await nilql.decrypt(this.secretKeyStore, validFileNameShares);
+          } catch (decryptError) {
+            console.error(`❌ Failed to decrypt file name for record ${_id}:`, decryptError);
+          }
+        }
+      }
+
+      // Construct the merged record using data from the first occurrence and decrypted values
+      const mergedRecord = {
+        ...firstRecordData, // Start with non-shared data from the first record seen
+        _id: _id,
+        entry: decryptedEntry,
+      };
+
+      // Add decrypted mood only if decryption was successful
+      if (decryptedMood !== null && !isNaN(decryptedMood)) {
+        mergedRecord.mood = decryptedMood;
+      } else {
+        // Ensure mood field is removed if decryption failed or wasn't present
+        delete mergedRecord.mood;
+      }
+
+      // Add decrypted file chunks and file_name if available
+      if (decryptedFileChunks.length > 0) {
+        mergedRecord.file = decryptedFileChunks; // Array of decrypted chunks (e.g., Uint8Arrays or Buffers)
+        // Add decrypted file_name if available
+        if (decryptedFileName) {
+          mergedRecord.file_name = decryptedFileName;
+        } else {
+          // If chunks exist but filename failed decryption, remove placeholder
+          delete mergedRecord.file_name;
+        }
+      } else {
+        // Ensure file fields are removed if decryption failed or wasn't present
+        delete mergedRecord.file;
+        delete mergedRecord.file_name;
+      }
+
+      mergedRecords.push(mergedRecord);
     }
-    // Remove duplicates (keep only one per _id)
-    const uniqueRecords = Array.from(new Map(mergedRecords.map(r => [r._id, r])).values());
-    return uniqueRecords;
+
+    return mergedRecords;
   }
 
   /**
@@ -567,6 +691,48 @@ class SecretVaultWrapper {
 
     // Return the single aggregated result within an array
     return [finalResult];
+  }
+}
+
+// Function to chunk a byte array (Uint8Array)
+function chunkBytes(bytes, chunkSize) {
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(bytes.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+// Function to unchunk byte arrays (Uint8Array)
+function unchunkBytes(chunks) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+// Helper function to get MIME type from filename
+function getMimeTypeFromFilename(filename) {
+  const extension = filename.split('.').pop().toLowerCase();
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'svg':
+      return 'image/svg+xml';
+    // Add more cases as needed
+    default:
+      return 'application/octet-stream'; // Default fallback
   }
 }
 
@@ -803,6 +969,7 @@ function initializeReflectionsApp() {
     const entryTextArea = document.getElementById('entry-text');
     const entryText = entryTextArea.value.trim();
     const tagsInput = document.getElementById('entry-tags'); // Get tags input
+    const imageInput = document.getElementById('entry-image'); // Get image input
     // Ensure tagsInput is found before accessing value
     const tagsText = tagsInput ? tagsInput.value.trim() : '';
 
@@ -836,6 +1003,22 @@ function initializeReflectionsApp() {
     };
     if (moodValue) message_for_nildb.mood = moodValue;
 
+    // --- Image Processing --- //
+    const file = imageInput.files[0];
+    if (file) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        // Add chunks and filename to the message
+        message_for_nildb.file = chunkBytes(bytes, CHUNK_SIZE); // Store the array of Uint8Array chunks
+        message_for_nildb.file_name = file.name;
+      } catch (error) {
+        console.error('Error processing image file:', error);
+        showWarningModal(`Failed to process image: ${error.message}. Memory saved without image.`);
+      }
+    }
+    // --- End Image Processing ---
+
     // Show loading state
     const savingSpinner = document.getElementById('saving-entry-spinner');
     if (saveEntryBtn) saveEntryBtn.disabled = true;
@@ -850,6 +1033,7 @@ function initializeReflectionsApp() {
       // Clear the input fields
       entryTextArea.value = '';
       tagsInput.value = ''; // Clear tags input
+      imageInput.value = ''; // Clear image input
 
       // Refresh entries display
       await fetchEntriesByDate(currentSelectedDate);
@@ -1074,7 +1258,7 @@ function initializeReflectionsApp() {
 
   // Helper function to process fetched entries (avoids duplication)
   function processFetchedEntries(dataReadFromNilDB) {
-    return dataReadFromNilDB
+    const entries = dataReadFromNilDB
     .filter(entry => entry && typeof entry === 'object' && entry._id)
     .map(entry => ({
       id: entry._id,
@@ -1082,8 +1266,11 @@ function initializeReflectionsApp() {
       text: entry.entry,
       tags: entry.tags,
       date: entry.date,
-      mood: entry.mood
+      mood: entry.mood,
+      file: entry.file,
+      file_name: entry.file_name
     }));
+    return entries;
   }
 
   // Global variable to store the memory queue
@@ -1194,6 +1381,10 @@ function initializeReflectionsApp() {
                     <div class="entry-tags-container mt-2">
                         <!-- Tags will be injected here by JS -->
                     </div>
+                    <!-- Container for Image -->
+                    <div class="entry-image-container mt-2">
+                        <!-- Image will be injected here by JS -->
+                    </div>
                 </div>
             `;
 
@@ -1207,6 +1398,52 @@ function initializeReflectionsApp() {
             tagElement.textContent = tag;
             tagsContainer.appendChild(tagElement);
           });
+        }
+      }
+
+      // Inject image if it exists
+      if (Array.isArray(entry.file) && entry.file.length > 0 && entry.file_name) {
+        const imageContainer = entryCard.querySelector('.entry-image-container');
+        if (imageContainer) {
+          try {
+            // 1. Unchunk the bytes (entry.file contains decrypted chunks)
+            // Ensure chunks are Uint8Array before passing to unchunkBytes
+            const chunksAsUint8Array = entry.file.map(chunk => {
+              if (chunk instanceof Uint8Array) return chunk;
+              // nilql might return Buffer, convert if necessary
+              if (Buffer.isBuffer(chunk)) return new Uint8Array(chunk);
+              // Handle unexpected types if necessary, though ideally decrypt returns consistent type
+              console.warn(`[Debug] Unexpected chunk type for entry ${entry.id}, attempting conversion:`, typeof chunk);
+              return new Uint8Array(chunk); // Attempt conversion
+            });
+            const imageBytes = unchunkBytes(chunksAsUint8Array);
+
+            // 2. Create Blob and Object URL
+            const mimeType = getMimeTypeFromFilename(entry.file_name);
+            const blob = new Blob([imageBytes], { type: mimeType });
+            const imageUrl = URL.createObjectURL(blob);
+
+            // 3. Create and append image element
+            const imgElement = document.createElement('img');
+            imgElement.src = imageUrl;
+            imgElement.alt = `Memory image: ${entry.file_name}`;
+            imgElement.className = 'entry-image img-fluid rounded'; // Bootstrap classes
+            imgElement.style.maxWidth = '100px'; // Limit size
+            imgElement.style.maxHeight = '100px';
+            imgElement.style.marginTop = '5px';
+
+            imageContainer.appendChild(imgElement);
+
+            // Optional: Revoke URL when element is removed (more complex, skip for now)
+            // imgElement.onload = () => { /* URL.revokeObjectURL(imageUrl); // Too soon */ };
+
+          } catch (error) {
+            console.error(`[Debug] Error processing/displaying image for entry ${entry.id}:`, error);
+            const errorMsg = document.createElement('span');
+            errorMsg.className = 'text-danger small';
+            errorMsg.textContent = 'Error displaying image.';
+            imageContainer.appendChild(errorMsg);
+          }
         }
       }
 

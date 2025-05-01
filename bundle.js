@@ -15404,12 +15404,13 @@ if (cid) {
       }
     ]
   };
-  var SCHEMA = "a3388a06-e722-4cfa-aba7-2c36eeaca983";
-  var TAG_AGGREGATION = "2cc2c020-a56a-4ac8-8136-d7a4d7eb5d65";
-  var MOOD_AGGREGATION = "87925cd5-f894-4889-b0f8-32c067099547";
+  var SCHEMA = "0872b4f4-8e6c-4fe5-a3f3-4dfcaed9ddd3";
+  var TAG_AGGREGATION = "8c7c4993-d486-40f3-916e-23b930764ab3";
+  var MOOD_AGGREGATION = "d2a6f4dd-3b2d-4333-864a-3af5b990a51c";
   var NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
   var NIL_API_TOKEN = "Nillion2025";
   var DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
+  var CHUNK_SIZE = 2 * 1024;
   var SecretVaultWrapper = class {
     constructor(nodes, credentials, schemaId = null, secretKeySeed = null, tokenExpirySeconds = 36e6) {
       this.nodes = nodes;
@@ -15516,27 +15517,40 @@ if (cid) {
       const allNodeRecords = [];
       for (const item of data) {
         const recordId = !update && !item._id ? v4_default() : item._id;
-        const shares = await nilql.encrypt(this.secretKeyStore, item.entry);
+        const entryShares = await nilql.encrypt(this.secretKeyStore, item.entry);
         let moodShares = null;
         if (item.mood !== void 0 && item.mood !== null && item.mood !== "") {
           moodShares = await nilql.encrypt(this.secretKeySum, parseInt(item.mood, 10));
         }
+        let allChunkShares = [];
+        let fileNameShares = null;
+        if (Array.isArray(item.file) && item.file.length > 0) {
+          for (const chunk of item.file) {
+            const chunkShares = await nilql.encrypt(this.secretKeyStore, chunk);
+            allChunkShares.push(chunkShares);
+          }
+          if (item.file_name) {
+            fileNameShares = await nilql.encrypt(this.secretKeyStore, item.file_name);
+          }
+        }
         for (let i3 = 0; i3 < this.nodes.length; i3++) {
           let nodeMessage;
-          if (update) {
-            nodeMessage = {
-              ...item,
-              entry: { "%share": shares[i3] }
-            };
-          } else {
-            nodeMessage = {
-              ...item,
-              _id: recordId,
-              entry: { "%share": shares[i3] }
-            };
-          }
+          const baseMessage = update ? { ...item } : { ...item, _id: recordId };
+          nodeMessage = {
+            ...baseMessage,
+            entry: { "%share": entryShares[i3] }
+          };
           if (moodShares) {
             nodeMessage.mood = { "%share": moodShares[i3] };
+          }
+          if (allChunkShares.length > 0) {
+            nodeMessage.file = [];
+            for (let j = 0; j < allChunkShares.length; j++) {
+              nodeMessage.file.push({ "%share": allChunkShares[j][i3] });
+            }
+            if (fileNameShares) {
+              nodeMessage.file_name = { "%share": fileNameShares[i3] };
+            }
           }
           allNodeRecords.push(nodeMessage);
         }
@@ -15646,41 +15660,114 @@ if (cid) {
           for (const record of nodeResult.data) {
             if (!record._id) continue;
             if (!recordSharesMap.has(record._id)) {
-              recordSharesMap.set(record._id, { entry: [], mood: [] });
+              recordSharesMap.set(record._id, {
+                entry: [],
+                mood: [],
+                file: record.file ? record.file.map(() => []) : [],
+                // Initialize based on first seen record's file structure
+                file_name: [],
+                // Add for filename shares
+                firstRecordData: { ...record }
+                // Store the first occurrence's non-shared data
+              });
             }
-            const sharesForRecord = recordSharesMap.get(record._id);
-            sharesForRecord.entry.push(record.entry && record.entry["%share"]);
-            sharesForRecord.mood.push(record.mood && record.mood["%share"]);
+            const recordData = recordSharesMap.get(record._id);
+            recordData.entry.push(record.entry && record.entry["%share"]);
+            if (record.mood && record.mood["%share"]) {
+              recordData.mood.push(record.mood["%share"]);
+            }
+            if (Array.isArray(record.file)) {
+              if (recordData.file.length !== record.file.length) {
+                recordData.file = record.file.map(() => []);
+                if (!recordData.firstRecordData.file) {
+                  recordData.firstRecordData = { ...record };
+                }
+              }
+              record.file.forEach((chunkShareObj, chunkIndex) => {
+                if (chunkShareObj && chunkShareObj["%share"]) {
+                  if (!recordData.file[chunkIndex]) {
+                    recordData.file[chunkIndex] = [];
+                  }
+                  recordData.file[chunkIndex].push(chunkShareObj["%share"]);
+                }
+              });
+            }
+            if (record.file_name && record.file_name["%share"]) {
+              if (!recordData.file_name) {
+                recordData.file_name = [];
+              }
+              recordData.file_name.push(record.file_name["%share"]);
+              if (!recordData.firstRecordData.file_name || !recordData.firstRecordData.file_name["%share"]) {
+                recordData.firstRecordData.file_name = { "%share": "placeholder" };
+              }
+            }
           }
         }
       }
       const mergedRecords = [];
-      for (const nodeResult of results) {
-        if (nodeResult.data) {
-          for (const record of nodeResult.data) {
-            if (!record._id) continue;
-            if (mergedRecords.some((r3) => r3._id === record._id)) continue;
-            const sharesForRecord = recordSharesMap.get(record._id);
-            const entryShares = sharesForRecord.entry.filter(Boolean);
-            const moodShares = sharesForRecord.mood.filter(Boolean);
-            let decryptedEntry = null;
-            if (entryShares.length > 0) {
-              decryptedEntry = await nilql.decrypt(this.secretKeyStore, entryShares);
+      for (const [_id, recordData] of recordSharesMap.entries()) {
+        const { entry: entryShares, mood: moodShares, file: fileChunkSharesArrays, file_name: fileNameShares, firstRecordData } = recordData;
+        let decryptedEntry = null;
+        const validEntryShares = entryShares.filter(Boolean);
+        if (validEntryShares.length > 0) {
+          decryptedEntry = await nilql.decrypt(this.secretKeyStore, validEntryShares);
+        }
+        let decryptedMood = null;
+        const validMoodShares = moodShares.filter(Boolean);
+        if (validMoodShares.length > 0) {
+          const rawMood = await nilql.decrypt(this.secretKeySum, validMoodShares);
+          decryptedMood = Number(rawMood);
+        }
+        let decryptedFileChunks = [];
+        let decryptedFileName = null;
+        if (Array.isArray(fileChunkSharesArrays) && fileChunkSharesArrays.length > 0) {
+          for (const chunkShares of fileChunkSharesArrays) {
+            const validChunkShares = chunkShares.filter(Boolean);
+            if (validChunkShares.length > 0) {
+              try {
+                const decryptedChunk = await nilql.decrypt(this.secretKeyStore, validChunkShares);
+                decryptedFileChunks.push(decryptedChunk);
+              } catch (decryptError) {
+                console.error(`\u274C Failed to decrypt file chunk for record ${_id}:`, decryptError);
+              }
             }
-            const mergedRecord = {
-              ...record,
-              entry: decryptedEntry
-            };
-            if (moodShares.length > 0) {
-              let decryptedMood = await nilql.decrypt(this.secretKeySum, moodShares);
-              mergedRecord.mood = Number(decryptedMood);
-            }
-            mergedRecords.push(mergedRecord);
           }
         }
+        if (decryptedFileChunks.length > 0 && Array.isArray(fileNameShares) && fileNameShares.length > 0) {
+          const validFileNameShares = fileNameShares.filter(Boolean);
+          if (validFileNameShares.length > 0) {
+            try {
+              decryptedFileName = await nilql.decrypt(this.secretKeyStore, validFileNameShares);
+            } catch (decryptError) {
+              console.error(`\u274C Failed to decrypt file name for record ${_id}:`, decryptError);
+            }
+          }
+        }
+        const mergedRecord = {
+          ...firstRecordData,
+          // Start with non-shared data from the first record seen
+          _id,
+          entry: decryptedEntry
+        };
+        if (decryptedMood !== null && !isNaN(decryptedMood)) {
+          mergedRecord.mood = decryptedMood;
+        } else {
+          delete mergedRecord.mood;
+        }
+        if (decryptedFileChunks.length > 0) {
+          mergedRecord.file = decryptedFileChunks;
+          if (decryptedFileName) {
+            mergedRecord.file_name = decryptedFileName;
+          } else {
+            delete mergedRecord.file_name;
+          }
+        } else {
+          delete mergedRecord.file;
+          delete mergedRecord.file_name;
+        }
+        mergedRecords.push(mergedRecord);
       }
-      const uniqueRecords = Array.from(new Map(mergedRecords.map((r3) => [r3._id, r3])).values());
-      return uniqueRecords;
+      return mergedRecords;
     }
     /**
     * Updates data on all nodes, with optional field encryption
@@ -15851,6 +15938,42 @@ if (cid) {
       return [finalResult];
     }
   };
+  function chunkBytes(bytes, chunkSize) {
+    const chunks = [];
+    for (let i3 = 0; i3 < bytes.length; i3 += chunkSize) {
+      chunks.push(bytes.slice(i3, i3 + chunkSize));
+    }
+    return chunks;
+  }
+  function unchunkBytes(chunks) {
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return merged;
+  }
+  function getMimeTypeFromFilename(filename) {
+    const extension = filename.split(".").pop().toLowerCase();
+    switch (extension) {
+      case "jpg":
+      case "jpeg":
+        return "image/jpeg";
+      case "png":
+        return "image/png";
+      case "gif":
+        return "image/gif";
+      case "webp":
+        return "image/webp";
+      case "svg":
+        return "image/svg+xml";
+      // Add more cases as needed
+      default:
+        return "application/octet-stream";
+    }
+  }
   var moodEmojis = {
     1: { emoji: "\u{1F61E}", label: "Very Bad" },
     2: { emoji: "\u{1F615}", label: "Bad" },
@@ -16020,6 +16143,7 @@ if (cid) {
       const entryTextArea = document.getElementById("entry-text");
       const entryText = entryTextArea.value.trim();
       const tagsInput = document.getElementById("entry-tags");
+      const imageInput = document.getElementById("entry-image");
       const tagsText = tagsInput ? tagsInput.value.trim() : "";
       if (!entryText) {
         showWarningModal("Please enter some text for your reflection.");
@@ -16039,6 +16163,18 @@ if (cid) {
         tags: tagsArray
       };
       if (moodValue) message_for_nildb.mood = moodValue;
+      const file = imageInput.files[0];
+      if (file) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          message_for_nildb.file = chunkBytes(bytes, CHUNK_SIZE);
+          message_for_nildb.file_name = file.name;
+        } catch (error) {
+          console.error("Error processing image file:", error);
+          showWarningModal(`Failed to process image: ${error.message}. Memory saved without image.`);
+        }
+      }
       const savingSpinner = document.getElementById("saving-entry-spinner");
       if (saveEntryBtn) saveEntryBtn.disabled = true;
       if (savingSpinner) savingSpinner.style.display = "inline-block";
@@ -16049,6 +16185,7 @@ if (cid) {
         await appState.collection.writeToNodes([message_for_nildb]);
         entryTextArea.value = "";
         tagsInput.value = "";
+        imageInput.value = "";
         await fetchEntriesByDate(currentSelectedDate);
         const entriesList = document.getElementById("entries-list");
         if (entriesList) {
@@ -16204,14 +16341,17 @@ if (cid) {
       }
     }
     function processFetchedEntries(dataReadFromNilDB) {
-      return dataReadFromNilDB.filter((entry) => entry && typeof entry === "object" && entry._id).map((entry) => ({
+      const entries = dataReadFromNilDB.filter((entry) => entry && typeof entry === "object" && entry._id).map((entry) => ({
         id: entry._id,
         timestamp: entry._created,
         text: entry.entry,
         tags: entry.tags,
         date: entry.date,
-        mood: entry.mood
+        mood: entry.mood,
+        file: entry.file,
+        file_name: entry.file_name
       }));
+      return entries;
     }
     const memoryQueue = [];
     function displayEntries(entries) {
@@ -16293,6 +16433,10 @@ if (cid) {
                     <div class="entry-tags-container mt-2">
                         <!-- Tags will be injected here by JS -->
                     </div>
+                    <!-- Container for Image -->
+                    <div class="entry-image-container mt-2">
+                        <!-- Image will be injected here by JS -->
+                    </div>
                 </div>
             `;
         if (Array.isArray(entry.tags) && entry.tags.length > 0) {
@@ -16304,6 +16448,37 @@ if (cid) {
               tagElement.textContent = tag;
               tagsContainer.appendChild(tagElement);
             });
+          }
+        }
+        if (Array.isArray(entry.file) && entry.file.length > 0 && entry.file_name) {
+          const imageContainer = entryCard.querySelector(".entry-image-container");
+          if (imageContainer) {
+            try {
+              const chunksAsUint8Array = entry.file.map((chunk) => {
+                if (chunk instanceof Uint8Array) return chunk;
+                if (import_buffer.Buffer.isBuffer(chunk)) return new Uint8Array(chunk);
+                console.warn(`[Debug] Unexpected chunk type for entry ${entry.id}, attempting conversion:`, typeof chunk);
+                return new Uint8Array(chunk);
+              });
+              const imageBytes = unchunkBytes(chunksAsUint8Array);
+              const mimeType = getMimeTypeFromFilename(entry.file_name);
+              const blob = new Blob([imageBytes], { type: mimeType });
+              const imageUrl = URL.createObjectURL(blob);
+              const imgElement = document.createElement("img");
+              imgElement.src = imageUrl;
+              imgElement.alt = `Memory image: ${entry.file_name}`;
+              imgElement.className = "entry-image img-fluid rounded";
+              imgElement.style.maxWidth = "100px";
+              imgElement.style.maxHeight = "100px";
+              imgElement.style.marginTop = "5px";
+              imageContainer.appendChild(imgElement);
+            } catch (error) {
+              console.error(`[Debug] Error processing/displaying image for entry ${entry.id}:`, error);
+              const errorMsg = document.createElement("span");
+              errorMsg.className = "text-danger small";
+              errorMsg.textContent = "Error displaying image.";
+              imageContainer.appendChild(errorMsg);
+            }
           }
         }
         entryCard.addEventListener("click", (e3) => {

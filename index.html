@@ -279,6 +279,15 @@
                                    data-bs-placement="top"
                                    title="Tags are metadata, use them with caution."></i>
                             </div>
+                            <div class="mb-3 d-flex justify-content-end align-items-center position-relative" style="gap: 0.5rem;">
+                                <label for="entry-image" class="form-label mb-0 me-2 small text-muted">Image:</label>
+                                <input type="file" class="form-control form-control-sm" id="entry-image" accept="image/*" style="flex-grow: 1;">
+                                <i class="fas fa-info-circle text-muted"
+                                   style="cursor: help;"
+                                   data-bs-toggle="tooltip"
+                                   data-bs-placement="top"
+                                   title="Upload an optional image for this memory. Images stay private using SecretVaults."></i>
+                            </div>
                             <div class="mb-3 d-flex justify-content-between align-items-center" style="gap: 0.5rem;">
                             <button type="button" class="btn btn-accent" id="save-entry-btn"><i class="fas fa-save me-1"></i>Save Memory</button>
                                 <div class="d-flex align-items-center" style="gap: 0.5rem;">
@@ -335,15 +344,6 @@
 
     <!-- FullCalendar JS -->
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-
-    <!-- UUID v4 generation using Web Crypto API -->
-    <script>
-        function uuidv4() {
-            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-            );
-        }
-    </script>
 
     <script src="./bundle.js"></script>
 

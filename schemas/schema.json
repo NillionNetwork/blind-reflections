@@ -44,6 +44,26 @@
           "type": "string"
         },
         "description": "Optional list of tags associated with the reflection."
+      },
+      "file": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "%share": {
+                    "type": "string"
+                }
+            },
+            "required": ["%share"]
+        }
+      },
+      "file_name": {
+        "type": "object",
+        "properties": {
+          "%share": {
+            "type": "string"
+          }
+        }
       }
     },
     "required": [
