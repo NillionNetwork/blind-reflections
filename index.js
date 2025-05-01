@@ -994,6 +994,18 @@ function initializeReflectionsApp() {
 
     // Mood
     const moodValue = document.getElementById('entry-mood')?.value;
+
+    // --- Image Size Check --- //
+    const file = imageInput.files[0];
+    const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB in bytes
+
+    if (file && file.size > MAX_FILE_SIZE) {
+      showWarningModal(`Image file too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Please select an image smaller than 15 MB.`);
+      imageInput.value = ''; // Clear the invalid file input
+      return; // Stop the save process
+    }
+    // --- End Image Size Check ---
+
     // Save entry to nilDB
     const message_for_nildb = {
       uuid: uuid,
@@ -1004,7 +1016,6 @@ function initializeReflectionsApp() {
     if (moodValue) message_for_nildb.mood = moodValue;
 
     // --- Image Processing --- //
-    const file = imageInput.files[0];
     if (file) {
       try {
         const arrayBuffer = await file.arrayBuffer();

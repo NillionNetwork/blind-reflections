@@ -16156,6 +16156,13 @@ if (cid) {
       }
       const tagsArray = tagsText ? tagsText.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "") : [];
       const moodValue = document.getElementById("entry-mood")?.value;
+      const file = imageInput.files[0];
+      const MAX_FILE_SIZE = 15 * 1024 * 1024;
+      if (file && file.size > MAX_FILE_SIZE) {
+        showWarningModal(`Image file too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Please select an image smaller than 15 MB.`);
+        imageInput.value = "";
+        return;
+      }
       const message_for_nildb = {
         uuid,
         date: currentSelectedDate,
@@ -16163,7 +16170,6 @@ if (cid) {
         tags: tagsArray
       };
       if (moodValue) message_for_nildb.mood = moodValue;
-      const file = imageInput.files[0];
       if (file) {
         try {
           const arrayBuffer = await file.arrayBuffer();
