@@ -1576,6 +1576,8 @@ function initializeReflectionsApp() {
       if (currentSelectedDate) {
         await fetchEntriesByDate(currentSelectedDate);
       }
+      // Refresh histogram data after deletion
+      runAndLogInitialQuery();
       // Hide modal
       const modal = bootstrap.Modal.getInstance(document.getElementById('delete-confirm-modal'));
       if (modal) modal.hide();

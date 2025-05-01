@@ -16580,6 +16580,7 @@ if (cid) {
         if (currentSelectedDate) {
           await fetchEntriesByDate(currentSelectedDate);
         }
+        runAndLogInitialQuery();
         const modal = bootstrap.Modal.getInstance(document.getElementById("delete-confirm-modal"));
         if (modal) modal.hide();
         entryIdToDelete = null;
