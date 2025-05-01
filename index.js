@@ -1387,7 +1387,7 @@ function initializeReflectionsApp() {
                           <button class="btn btn-outline-danger btn-sm entry-delete-btn" title="Delete this memory" data-entry-id="${entry.id}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <p class="card-text entry-text"></p> <!-- Removed static text, will be filled by Markdown -->
+                    <div class="card-text entry-text"></div> <!-- Removed static text, will be filled by Markdown -->
                     <!-- Container for Tags -->
                     <div class="entry-tags-container mt-1"> <!-- Changed mt-2 to mt-1 -->
                         <!-- Tags will be injected here by JS -->
@@ -1974,9 +1974,61 @@ function initializeReflectionsApp() {
     button.addEventListener('click', () => {
       const textareaId = button.dataset.textareaId;
       const format = button.dataset.format;
-      console.log(`[Debug Markdown] Button clicked! textareaId: ${textareaId}, format: ${format}`); // Added log
       wrapTextWithMarkdown(textareaId, format);
     });
+  });
+
+  // Add keydown listener for automatic list continuation
+  ['entry-text', 'edit-entry-text'].forEach(textareaId => {
+    const textarea = document.getElementById(textareaId);
+    if (textarea) {
+      textarea.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          const start = textarea.selectionStart;
+          const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
+          const currentLine = textarea.value.substring(lineStart, start);
+
+          // Regex to match unordered list markers or ordered list markers
+          const listMatch = currentLine.match(/^(\s*)(- |\* |\+ |\d+\. )/);
+
+          if (listMatch) {
+            event.preventDefault(); // Prevent default Enter behavior
+
+            const indent = listMatch[1] || ''; // Capture indentation
+            const marker = listMatch[2]; // Capture the marker part
+            let nextMarker;
+
+            // Check if the list item content is empty (only marker and whitespace)
+            const isEmptyListItem = currentLine.trim() === marker.trim();
+
+            if (isEmptyListItem) {
+              // If Enter is pressed on an empty list item, remove the marker and indent
+              textarea.value = textarea.value.substring(0, lineStart) + textarea.value.substring(start);
+              textarea.selectionStart = textarea.selectionEnd = lineStart;
+              return; // Stop further processing
+            }
+
+            // Determine the next marker
+            const orderedMatch = marker.match(/^(\d+)\. /);
+            if (orderedMatch) {
+              // Ordered list: Increment number
+              const nextNum = parseInt(orderedMatch[1], 10) + 1;
+              nextMarker = `${indent}${nextNum}. `;
+            } else {
+              // Unordered list: Keep the same marker
+              nextMarker = `${indent}${marker}`;
+            }
+
+            // Insert newline and the next marker
+            const textToInsert = '\n' + nextMarker;
+            textarea.value = textarea.value.substring(0, start) + textToInsert + textarea.value.substring(start);
+
+            // Set cursor position after the inserted marker
+            textarea.selectionStart = textarea.selectionEnd = start + textToInsert.length;
+          }
+        }
+      });
+    }
   });
 }
 
@@ -2590,54 +2642,80 @@ function ensureHistogramElements() {
 
   // Helper function to wrap selected text in a textarea with Markdown syntax
   function wrapTextWithMarkdown(textareaId, format) {
-    console.log(`[Debug Markdown] wrapTextWithMarkdown called with textareaId: ${textareaId}, format: ${format}`);
     const textarea = document.getElementById(textareaId);
     if (!textarea) {
       console.error(`[Debug Markdown] Textarea with ID '${textareaId}' not found!`);
       return;
     }
-    console.log(`[Debug Markdown] Found textarea:`, textarea);
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selectedText = textarea.value.substring(start, end);
     let markdownText = selectedText;
-    let cursorOffset = 0; // To adjust cursor position after insertion
 
     switch (format) {
       case 'bold':
         markdownText = `**${selectedText}**`;
-        cursorOffset = 2;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        // Adjust cursor position
+        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 2; }
+        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
         break;
       case 'italic':
         markdownText = `*${selectedText}*`;
-        cursorOffset = 1;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 1; }
+        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
         break;
       case 'strikethrough':
         markdownText = `~~${selectedText}~~`;
-        cursorOffset = 2;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 2; }
+        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
+        break;
+      case 'underline': // Added case
+        markdownText = `<u>${selectedText}</u>`;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 3; }
+        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
+        break;
+      case 'h1':
+      case 'h2':
+      case 'h3':
+      case 'h4':
+        const level = parseInt(format.substring(1), 10);
+        const prefix = '#'.repeat(level) + ' ';
+        const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
+        // Insert prefix at the beginning of the line
+        textarea.value = textarea.value.substring(0, lineStart) + prefix + textarea.value.substring(lineStart);
+        // Adjust cursor position to be after the inserted prefix
+        textarea.selectionStart = textarea.selectionEnd = lineStart + prefix.length;
+        break;
+      case 'unordered-list':
+        {
+          const listPrefix = '- ';
+          const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
+          textarea.value = textarea.value.substring(0, lineStart) + listPrefix + textarea.value.substring(lineStart);
+          textarea.selectionStart = textarea.selectionEnd = lineStart + listPrefix.length;
+        }
+        break;
+      case 'ordered-list':
+         {
+          const listPrefix = '1. ';
+          const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
+          textarea.value = textarea.value.substring(0, lineStart) + listPrefix + textarea.value.substring(lineStart);
+          textarea.selectionStart = textarea.selectionEnd = lineStart + listPrefix.length;
+         }
         break;
       // Add cases for other formats like lists, links, etc. if needed
-    }
-
-    // Insert the formatted text back into the textarea
-    textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
-
-    // Adjust cursor position
-    if (selectedText.length === 0) {
-      // If no text was selected, place cursor in the middle of the markdown syntax
-      textarea.selectionStart = textarea.selectionEnd = start + cursorOffset;
-    } else {
-      // If text was selected, place cursor after the inserted markdown text
-      textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
     }
 
     textarea.focus(); // Keep focus on the textarea
   }
 
-  // Single DOMContentLoaded listener to initialize both parts
-  document.addEventListener('DOMContentLoaded', function() {
-    initializeReflectionsApp();
-    initializeAuth();
-    fetchAndPopulateModels(); // Fetch models when DOM is ready
-  });
+// Single DOMContentLoaded listener to initialize both parts
+document.addEventListener('DOMContentLoaded', function() {
+  initializeReflectionsApp();
+  initializeAuth();
+  fetchAndPopulateModels(); // Fetch models when DOM is ready
+});

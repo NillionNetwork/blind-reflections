@@ -16434,7 +16434,7 @@ if (cid) {
                           <button class="btn btn-outline-danger btn-sm entry-delete-btn" title="Delete this memory" data-entry-id="${entry.id}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <p class="card-text entry-text"></p> <!-- Removed static text, will be filled by Markdown -->
+                    <div class="card-text entry-text"></div> <!-- Removed static text, will be filled by Markdown -->
                     <!-- Container for Tags -->
                     <div class="entry-tags-container mt-1"> <!-- Changed mt-2 to mt-1 -->
                         <!-- Tags will be injected here by JS -->
@@ -16870,6 +16870,41 @@ ${memoryContext}`
         console.log(`[Debug Markdown] Button clicked! textareaId: ${textareaId}, format: ${format}`);
         wrapTextWithMarkdown(textareaId, format);
       });
+    });
+    ["entry-text", "edit-entry-text"].forEach((textareaId) => {
+      const textarea = document.getElementById(textareaId);
+      if (textarea) {
+        textarea.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            const start = textarea.selectionStart;
+            const lineStart = textarea.value.lastIndexOf("\n", start - 1) + 1;
+            const currentLine = textarea.value.substring(lineStart, start);
+            const listMatch = currentLine.match(/^(\s*)(- |\* |\+ |\d+\. )/);
+            if (listMatch) {
+              event.preventDefault();
+              const indent = listMatch[1] || "";
+              const marker = listMatch[2];
+              let nextMarker;
+              const isEmptyListItem = currentLine.trim() === marker.trim();
+              if (isEmptyListItem) {
+                textarea.value = textarea.value.substring(0, lineStart) + textarea.value.substring(start);
+                textarea.selectionStart = textarea.selectionEnd = lineStart;
+                return;
+              }
+              const orderedMatch = marker.match(/^(\d+)\. /);
+              if (orderedMatch) {
+                const nextNum = parseInt(orderedMatch[1], 10) + 1;
+                nextMarker = `${indent}${nextNum}. `;
+              } else {
+                nextMarker = `${indent}${marker}`;
+              }
+              const textToInsert = "\n" + nextMarker;
+              textarea.value = textarea.value.substring(0, start) + textToInsert + textarea.value.substring(start);
+              textarea.selectionStart = textarea.selectionEnd = start + textToInsert.length;
+            }
+          }
+        });
+      }
     });
   }
   function ensureHistogramElements() {
@@ -17327,26 +17362,69 @@ ${memoryContext}`
     const end = textarea.selectionEnd;
     const selectedText = textarea.value.substring(start, end);
     let markdownText = selectedText;
-    let cursorOffset = 0;
     switch (format) {
       case "bold":
         markdownText = `**${selectedText}**`;
-        cursorOffset = 2;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        } else {
+          textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+        }
         break;
       case "italic":
         markdownText = `*${selectedText}*`;
-        cursorOffset = 1;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) {
+          textarea.selectionStart = textarea.selectionEnd = start + 1;
+        } else {
+          textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+        }
         break;
       case "strikethrough":
         markdownText = `~~${selectedText}~~`;
-        cursorOffset = 2;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        } else {
+          textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+        }
         break;
-    }
-    textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
-    if (selectedText.length === 0) {
-      textarea.selectionStart = textarea.selectionEnd = start + cursorOffset;
-    } else {
-      textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+      case "underline":
+        markdownText = `<u>${selectedText}</u>`;
+        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+        if (selectedText.length === 0) {
+          textarea.selectionStart = textarea.selectionEnd = start + 3;
+        } else {
+          textarea.selectionStart = textarea.selectionEnd = start + markdownText.length;
+        }
+        break;
+      case "h1":
+      case "h2":
+      case "h3":
+      case "h4":
+        const level = parseInt(format.substring(1), 10);
+        const prefix = "#".repeat(level) + " ";
+        const lineStart = textarea.value.lastIndexOf("\n", start - 1) + 1;
+        textarea.value = textarea.value.substring(0, lineStart) + prefix + textarea.value.substring(lineStart);
+        textarea.selectionStart = textarea.selectionEnd = lineStart + prefix.length;
+        break;
+      case "unordered-list":
+        {
+          const listPrefix = "- ";
+          const lineStart2 = textarea.value.lastIndexOf("\n", start - 1) + 1;
+          textarea.value = textarea.value.substring(0, lineStart2) + listPrefix + textarea.value.substring(lineStart2);
+          textarea.selectionStart = textarea.selectionEnd = lineStart2 + listPrefix.length;
+        }
+        break;
+      case "ordered-list":
+        {
+          const listPrefix = "1. ";
+          const lineStart2 = textarea.value.lastIndexOf("\n", start - 1) + 1;
+          textarea.value = textarea.value.substring(0, lineStart2) + listPrefix + textarea.value.substring(lineStart2);
+          textarea.selectionStart = textarea.selectionEnd = lineStart2 + listPrefix.length;
+        }
+        break;
     }
     textarea.focus();
   }
