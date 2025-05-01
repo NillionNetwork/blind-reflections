@@ -16867,7 +16867,6 @@ ${memoryContext}`
       button.addEventListener("click", () => {
         const textareaId = button.dataset.textareaId;
         const format = button.dataset.format;
-        console.log(`[Debug Markdown] Button clicked! textareaId: ${textareaId}, format: ${format}`);
         wrapTextWithMarkdown(textareaId, format);
       });
     });
@@ -17351,13 +17350,11 @@ ${memoryContext}`
     }
   }
   function wrapTextWithMarkdown(textareaId, format) {
-    console.log(`[Debug Markdown] wrapTextWithMarkdown called with textareaId: ${textareaId}, format: ${format}`);
     const textarea = document.getElementById(textareaId);
     if (!textarea) {
       console.error(`[Debug Markdown] Textarea with ID '${textareaId}' not found!`);
       return;
     }
-    console.log(`[Debug Markdown] Found textarea:`, textarea);
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selectedText = textarea.value.substring(start, end);

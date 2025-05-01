@@ -379,7 +379,7 @@ class SecretVaultWrapper {
               if (chunkShareObj && chunkShareObj["%share"]) {
                 // Ensure the inner array exists for this chunk index
                 if (!recordData.file[chunkIndex]) {
-                   recordData.file[chunkIndex] = [];
+                  recordData.file[chunkIndex] = [];
                 }
                 recordData.file[chunkIndex].push(chunkShareObj["%share"]);
               }
@@ -863,18 +863,18 @@ function showLLMResponseModal(responseContent) {
   // Add copy functionality
   copyButton.addEventListener('click', () => {
     navigator.clipboard.writeText(responseContent)
-    .then(() => {
-      copyButton.textContent = 'Copied!';
-      copyButton.disabled = true;
-      setTimeout(() => {
-        copyButton.textContent = 'Copy Response';
-        copyButton.disabled = false;
-      }, 1500);
-    })
-    .catch((err) => {
-      console.error('Failed to copy text:', err);
-      // Optionally show a small error message near the button
-    });
+      .then(() => {
+        copyButton.textContent = 'Copied!';
+        copyButton.disabled = true;
+        setTimeout(() => {
+          copyButton.textContent = 'Copy Response';
+          copyButton.disabled = false;
+        }, 1500);
+      })
+      .catch((err) => {
+        console.error('Failed to copy text:', err);
+        // Optionally show a small error message near the button
+      });
   });
 
   // Remove the modal from the DOM when hidden to prevent ID conflicts
@@ -919,7 +919,7 @@ function initializeReflectionsApp() {
       }
 
       // Theme toggle handler
-      themeToggleBtn.addEventListener('click', function() {
+      themeToggleBtn.addEventListener('click', function () {
         const currentTheme = htmlElement.getAttribute('data-bs-theme');
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
@@ -989,8 +989,8 @@ function initializeReflectionsApp() {
     // Process tags: split by comma, trim whitespace, remove empty tags
     // Default to empty array if tagsText is empty
     const tagsArray = tagsText
-    ? tagsText.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
-    : [];
+      ? tagsText.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+      : [];
 
     // Mood
     const moodValue = document.getElementById('entry-mood')?.value;
@@ -1118,7 +1118,7 @@ function initializeReflectionsApp() {
     document.getElementById('no-date-message').style.display = 'none';
 
     // Show loading animation for entries
-    if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block'; // Show spinner
+    if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block'; // Show spinner
 
     // Fetch and display entries for the selected date
     await fetchEntriesByDate(dateStr); // Call the refactored function
@@ -1167,7 +1167,7 @@ function initializeReflectionsApp() {
         setTimeout(() => { location.reload(); }, 1000); // Give user a moment to see the warning
       }
     } finally {
-      if(entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none';
+      if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'none';
     }
   }
 
@@ -1182,8 +1182,8 @@ function initializeReflectionsApp() {
     const logicString = tagSearchButton ? tagSearchButton.dataset.selectedLogic : 'OR';
     // Only show logic if more than one tag
     const titleText = tagsArray.length > 1
-    ? `Memories for Tags: ${tagsString} (${logicString})`
-    : `Memories for Tag: ${tagsString}`;
+      ? `Memories for Tags: ${tagsString} (${logicString})`
+      : `Memories for Tag: ${tagsString}`;
     if (retrievedTitleEl) retrievedTitleEl.textContent = titleText;
     if (entriesLoadingSpinner) entriesLoadingSpinner.style.display = 'inline-block';
 
@@ -1270,17 +1270,17 @@ function initializeReflectionsApp() {
   // Helper function to process fetched entries (avoids duplication)
   function processFetchedEntries(dataReadFromNilDB) {
     const entries = dataReadFromNilDB
-    .filter(entry => entry && typeof entry === 'object' && entry._id)
-    .map(entry => ({
-      id: entry._id,
-      timestamp: entry._created,
-      text: entry.entry,
-      tags: entry.tags,
-      date: entry.date,
-      mood: entry.mood,
-      file: entry.file,
-      file_name: entry.file_name
-    }));
+      .filter(entry => entry && typeof entry === 'object' && entry._id)
+      .map(entry => ({
+        id: entry._id,
+        timestamp: entry._created,
+        text: entry.entry,
+        tags: entry.tags,
+        date: entry.date,
+        mood: entry.mood,
+        file: entry.file,
+        file_name: entry.file_name
+      }));
     return entries;
   }
 
@@ -1530,7 +1530,7 @@ function initializeReflectionsApp() {
   }
 
   // Save Changes button handler for edit modal
-  document.getElementById('save-edit-entry-btn').addEventListener('click', async function() {
+  document.getElementById('save-edit-entry-btn').addEventListener('click', async function () {
     if (!entryIdToEdit) return;
     const editText = document.getElementById('edit-entry-text').value.trim();
     const editTags = document.getElementById('edit-entry-tags').value.trim();
@@ -1594,7 +1594,7 @@ function initializeReflectionsApp() {
     }
   });
 
-  document.getElementById('confirm-delete-btn').addEventListener('click', async function() {
+  document.getElementById('confirm-delete-btn').addEventListener('click', async function () {
     if (!entryIdToDelete) return;
     try {
       if (!appState.collection) throw new Error('Collection not initialized');
@@ -1807,7 +1807,7 @@ function initializeReflectionsApp() {
       right: '', // Removed the 'dayGridMonth' button
     },
     selectable: true,
-    dateClick: function(info) {
+    dateClick: function (info) {
       selectDate(info.dateStr);
     },
     contentHeight: 'auto', // Ensure no vertical scrolling
@@ -1845,9 +1845,9 @@ function initializeReflectionsApp() {
     tagSearchButton.addEventListener('click', () => {
       // Split tags, trim, filter empty
       const tagsArray = tagSearchInput.value
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag !== '');
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag !== '');
 
       if (tagsArray.length > 0) {
         fetchEntriesByTag(tagsArray); // Pass array and logic
@@ -1920,7 +1920,7 @@ function initializeReflectionsApp() {
 
           speechStatus.textContent = 'Added: "' + finalTranscript.trim() + '" ';
           setTimeout(() => {
-            if(isRecording) speechStatus.textContent = 'Listening...';
+            if (isRecording) speechStatus.textContent = 'Listening...';
           }, 1500);
         }
       };
@@ -2057,230 +2057,230 @@ function ensureHistogramElements() {
       `<div id="histogram-container" class="histogram-container">
                 <p id="histogram-loading" class="text-muted small">Loading histogram data...</p>
             </div>`);
-    }
-    if (!section.querySelector('#histogram-loading')) {
-      section.querySelector('#histogram-container').innerHTML =
-      `<p id="histogram-loading" class="text-muted small">Loading histogram data...</p>`;
-    }
-    return section;
   }
+  if (!section.querySelector('#histogram-loading')) {
+    section.querySelector('#histogram-container').innerHTML =
+      `<p id="histogram-loading" class="text-muted small">Loading histogram data...</p>`;
+  }
+  return section;
+}
 
-  function renderHistogram(data) {
-    const section = ensureHistogramElements();
-    const container = section.querySelector('#histogram-container');
-    const loadingMsg = section.querySelector('#histogram-loading');
+function renderHistogram(data) {
+  const section = ensureHistogramElements();
+  const container = section.querySelector('#histogram-container');
+  const loadingMsg = section.querySelector('#histogram-loading');
 
-    section.style.display = 'block';
-    container.innerHTML = '';
-    if (loadingMsg) loadingMsg.style.display = 'none';
+  section.style.display = 'block';
+  container.innerHTML = '';
+  if (loadingMsg) loadingMsg.style.display = 'none';
 
-    if (!Array.isArray(data) || data.length === 0) {
-      container.innerHTML = `
+  if (!Array.isArray(data) || data.length === 0) {
+    container.innerHTML = `
             <div class="text-center p-4">
                 <i class="fas fa-chart-bar fs-1 mb-3 text-secondary"></i>
                 <p class="text-muted small">Not enough reflection data to display histogram.</p>
             </div>
         `;
-      return;
-    }
-
-    const maxCount = Math.max(...data.map(item => Number(item.reflections_count) || 0));
-    data.forEach(item => {
-      const count = Number(item.reflections_count) || 0;
-      const barHeight = maxCount > 0 ? (count / maxCount) * 100 : 0;
-      const bar = document.createElement('div');
-      bar.className = 'histogram-bar';
-      bar.style.height = `${barHeight}%`;
-      bar.title = `${item.date}: ${count} reflections`;
-
-      const valueLabel = document.createElement('span');
-      valueLabel.className = 'bar-value';
-      valueLabel.textContent = count;
-
-      const dateLabel = document.createElement('span');
-      dateLabel.className = 'bar-label';
-      dateLabel.textContent = item.date;
-
-      bar.appendChild(valueLabel);
-      bar.appendChild(dateLabel);
-      container.appendChild(bar);
-    });
+    return;
   }
 
-  const TOP_K_RESULTS = 5; // Increase K for a better histogram (adjust as needed)
+  const maxCount = Math.max(...data.map(item => Number(item.reflections_count) || 0));
+  data.forEach(item => {
+    const count = Number(item.reflections_count) || 0;
+    const barHeight = maxCount > 0 ? (count / maxCount) * 100 : 0;
+    const bar = document.createElement('div');
+    bar.className = 'histogram-bar';
+    bar.style.height = `${barHeight}%`;
+    bar.title = `${item.date}: ${count} reflections`;
 
-  // Helper function to run and log an initial query execution
-  async function runAndLogInitialQuery() {
-    const histogramLoadingEl = document.getElementById('histogram-loading');
-    if(histogramLoadingEl) histogramLoadingEl.style.display = 'flex'; // Show loading state
+    const valueLabel = document.createElement('span');
+    valueLabel.className = 'bar-value';
+    valueLabel.textContent = count;
 
-    if (!appState.collection) {
-      renderHistogram([]); // Render empty state
-      return;
+    const dateLabel = document.createElement('span');
+    dateLabel.className = 'bar-label';
+    dateLabel.textContent = item.date;
+
+    bar.appendChild(valueLabel);
+    bar.appendChild(dateLabel);
+    container.appendChild(bar);
+  });
+}
+
+const TOP_K_RESULTS = 5; // Increase K for a better histogram (adjust as needed)
+
+// Helper function to run and log an initial query execution
+async function runAndLogInitialQuery() {
+  const histogramLoadingEl = document.getElementById('histogram-loading');
+  if (histogramLoadingEl) histogramLoadingEl.style.display = 'flex'; // Show loading state
+
+  if (!appState.collection) {
+    renderHistogram([]); // Render empty state
+    return;
+  }
+  if (!NILDB.nodes || NILDB.nodes.length === 0) {
+    console.error("Skipping initial query: No nodes configured.");
+    renderHistogram([]); // Render empty state
+    return;
+  }
+
+  // Get the current user's UUID from session storage
+  const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
+  const currentUserUuid = authData?.uuid;
+
+  if (!currentUserUuid) {
+    console.error("Skipping initial query: User UUID not found in session storage.");
+    renderHistogram([]); // Render empty state
+    return;
+  }
+
+  const targetNode = NILDB.nodes[0]; // Use the first node
+  const queryPayload = {
+    id: TAG_AGGREGATION,
+    variables: {
+      uuid: currentUserUuid
     }
-    if (!NILDB.nodes || NILDB.nodes.length === 0) {
-      console.error("Skipping initial query: No nodes configured.");
-      renderHistogram([]); // Render empty state
-      return;
-    }
+  };
 
-    // Get the current user's UUID from session storage
-    const authData = JSON.parse(sessionStorage.getItem('blind_reflections_auth'));
-    const currentUserUuid = authData?.uuid;
+  try {
+    // Call executeQueryOnSingleNode with the correct payload format
+    const result = await appState.collection.executeQueryOnSingleNode(targetNode, queryPayload);
 
-    if (!currentUserUuid) {
-      console.error("Skipping initial query: User UUID not found in session storage.");
-      renderHistogram([]); // Render empty state
-      return;
-    }
-
-    const targetNode = NILDB.nodes[0]; // Use the first node
-    const queryPayload = {
-      id: TAG_AGGREGATION,
-      variables: {
-        uuid: currentUserUuid
-      }
-    };
-
-    try {
-      // Call executeQueryOnSingleNode with the correct payload format
-      const result = await appState.collection.executeQueryOnSingleNode(targetNode, queryPayload);
-
-      if (result.error) {
-        console.error(`❌ Initial query execution failed (Node: ${result.node}, Status: ${result.status}):`, result.error);
-        renderHistogram([]); // Render empty state on error
-      } else if (Array.isArray(result.data)) { // Process even if empty
-        const sortedData = [...result.data].sort((a, b) => { // Create copy before sorting
-          // Ensure both counts are numbers before subtracting
-          const countA = Number(a.reflections_count) || 0;
-          const countB = Number(b.reflections_count) || 0;
-          return countB - countA; // Sort descending
-        });
-        const topK = sortedData.slice(0, TOP_K_RESULTS);
-        renderHistogram(topK); // Render histogram with top K data
-      } else {
-        renderHistogram([]); // Render empty state
-      }
-    } catch (e) {
-      // Catch any unexpected errors from the call itself
-      console.error(`❌ Unexpected error during initial query execution:`, e);
+    if (result.error) {
+      console.error(`❌ Initial query execution failed (Node: ${result.node}, Status: ${result.status}):`, result.error);
       renderHistogram([]); // Render empty state on error
-    } finally {
-      // Hide loading animation
-      if(histogramLoadingEl) histogramLoadingEl.style.display = 'none'; // Hide spinner
+    } else if (Array.isArray(result.data)) { // Process even if empty
+      const sortedData = [...result.data].sort((a, b) => { // Create copy before sorting
+        // Ensure both counts are numbers before subtracting
+        const countA = Number(a.reflections_count) || 0;
+        const countB = Number(b.reflections_count) || 0;
+        return countB - countA; // Sort descending
+      });
+      const topK = sortedData.slice(0, TOP_K_RESULTS);
+      renderHistogram(topK); // Render histogram with top K data
+    } else {
+      renderHistogram([]); // Render empty state
+    }
+  } catch (e) {
+    // Catch any unexpected errors from the call itself
+    console.error(`❌ Unexpected error during initial query execution:`, e);
+    renderHistogram([]); // Render empty state on error
+  } finally {
+    // Hide loading animation
+    if (histogramLoadingEl) histogramLoadingEl.style.display = 'none'; // Hide spinner
+  }
+}
+
+// Function to initialize authentication logic
+function initializeAuth() {
+  // Session storage keys
+  const SESSION_UUID_KEY = 'blind_reflections_uuid';
+  const SESSION_AUTH_KEY = 'blind_reflections_auth';
+
+  const uuidSpan = document.getElementById('register-uuid');
+  const registerTabLink = document.querySelector('a#register-tab');
+  const authModal = document.getElementById('authModal');
+  const authModalElement = authModal ? new bootstrap.Modal(authModal) : null; // Initialize if exists
+  const signUpLoginButton = document.getElementById('sign-up-login-button');
+  const userDisplaySpan = document.getElementById('user-display') || createUserDisplayElement();
+
+  // Register and login buttons
+  const registerButton = document.getElementById('register-button');
+  const loginButton = document.getElementById('login-button');
+  // Get *all* Connect Wallet buttons (using a class is better, but ID works for now)
+  const connectWalletButtons = document.querySelectorAll('#connect-metamask-btn'); // Keep ID for now
+
+  // Login form elements (needed for Wallet Connect pre-fill)
+  const loginUsernameInput = document.getElementById('login-username');
+  const loginPasswordInput = document.getElementById('login-password');
+  const loginTabLink = document.getElementById('login-tab'); // Get the login tab link
+
+  // Function to create user display element if it doesn't exist
+  function createUserDisplayElement() {
+    const span = document.createElement('span');
+    span.id = 'user-display';
+    span.className = 'ms-2 d-none'; // Changed from me-2 (margin-end) to ms-2 (margin-start)
+    span.style.fontFamily = 'monospace';
+    span.style.fontSize = '0.9rem';
+
+    // Insert after the sign-up/login button
+    if (signUpLoginButton && signUpLoginButton.parentNode) {
+      // If there's a next sibling, insert before it, otherwise append to parent
+      if (signUpLoginButton.nextSibling) {
+        signUpLoginButton.parentNode.insertBefore(span, signUpLoginButton.nextSibling);
+      } else {
+        signUpLoginButton.parentNode.appendChild(span);
+      }
+    }
+
+    return span;
+  }
+
+  // Function to generate and set UUID
+  function setUuid() {
+    // Check if UUID span element exists
+    if (uuidSpan) {
+      const newUuid = uuidv4();
+      uuidSpan.textContent = newUuid;
     }
   }
 
-  // Function to initialize authentication logic
-  function initializeAuth() {
-    // Session storage keys
-    const SESSION_UUID_KEY = 'blind_reflections_uuid';
-    const SESSION_AUTH_KEY = 'blind_reflections_auth';
+  // Function to save authentication data
+  function saveAuthData(uuid, password) {
+    const authData = { uuid, password, timestamp: new Date().toISOString() };
+    sessionStorage.setItem(SESSION_UUID_KEY, uuid);
+    sessionStorage.setItem(SESSION_AUTH_KEY, JSON.stringify(authData));
+  }
 
-    const uuidSpan = document.getElementById('register-uuid');
-    const registerTabLink = document.querySelector('a#register-tab');
-    const authModal = document.getElementById('authModal');
-    const authModalElement = authModal ? new bootstrap.Modal(authModal) : null; // Initialize if exists
-    const signUpLoginButton = document.getElementById('sign-up-login-button');
-    const userDisplaySpan = document.getElementById('user-display') || createUserDisplayElement();
+  // Function to initialize the collection
+  async function initializeCollection(seed) {
+    // Ensure collection is not re-initialized unnecessarily
+    if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
+      return;
+    }
+    try {
+      // Store the instance in appState
+      appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, seed);
+      await appState.collection.init();
+    } catch (error) {
+      console.error("Failed to initialize collection:", error);
+      showWarningModal(`Error initializing connection: ${error.message}`);
+      sessionStorage.removeItem(SESSION_UUID_KEY);
+      sessionStorage.removeItem(SESSION_AUTH_KEY);
+      appState.collection = null;
+      location.reload();
+    }
+  }
 
-    // Register and login buttons
-    const registerButton = document.getElementById('register-button');
-    const loginButton = document.getElementById('login-button');
-    // Get *all* Connect Wallet buttons (using a class is better, but ID works for now)
-    const connectWalletButtons = document.querySelectorAll('#connect-metamask-btn'); // Keep ID for now
-
-    // Login form elements (needed for Wallet Connect pre-fill)
-    const loginUsernameInput = document.getElementById('login-username');
-    const loginPasswordInput = document.getElementById('login-password');
-    const loginTabLink = document.getElementById('login-tab'); // Get the login tab link
-
-    // Function to create user display element if it doesn't exist
-    function createUserDisplayElement() {
-      const span = document.createElement('span');
-      span.id = 'user-display';
-      span.className = 'ms-2 d-none'; // Changed from me-2 (margin-end) to ms-2 (margin-start)
-      span.style.fontFamily = 'monospace';
-      span.style.fontSize = '0.9rem';
-
-      // Insert after the sign-up/login button
-      if (signUpLoginButton && signUpLoginButton.parentNode) {
-        // If there's a next sibling, insert before it, otherwise append to parent
-        if (signUpLoginButton.nextSibling) {
-          signUpLoginButton.parentNode.insertBefore(span, signUpLoginButton.nextSibling);
-        } else {
-          signUpLoginButton.parentNode.appendChild(span);
-        }
+  // Function to display the logged-in user (handles UUID or Address)
+  function displayLoggedInUser(identifier) {
+    if (userDisplaySpan && identifier) {
+      let displayIdentifier = identifier;
+      // Check if it looks like an Ethereum address
+      if (identifier.startsWith('0x') && identifier.length === 42) {
+        // Truncate address for display
+        displayIdentifier = `${identifier.substring(0, 6)}...${identifier.substring(identifier.length - 4)}`;
+        userDisplaySpan.title = `Logged in as: ${identifier}`; // Full address in tooltip
+      } else {
+        userDisplaySpan.title = `Your unique identifier`; // Keep original title for UUID
       }
 
-      return span;
-    }
+      userDisplaySpan.textContent = displayIdentifier;
+      userDisplaySpan.classList.remove('d-none');
 
-    // Function to generate and set UUID
-    function setUuid() {
-      // Check if UUID span element exists
-      if (uuidSpan) {
-        const newUuid = uuidv4();
-        uuidSpan.textContent = newUuid;
-      }
-    }
+      // Add a small copy button next to the identifier
+      const existingCopyBtn = document.getElementById('header-copy-uuid-btn');
+      if (!existingCopyBtn) { // Only add if it doesn't exist
+        const copyBtn = document.createElement('button');
+        copyBtn.id = 'header-copy-uuid-btn';
+        copyBtn.className = 'btn btn-sm btn-outline-secondary ms-1';
+        copyBtn.title = 'Copy full identifier to clipboard';
+        copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
 
-    // Function to save authentication data
-    function saveAuthData(uuid, password) {
-      const authData = { uuid, password, timestamp: new Date().toISOString() };
-      sessionStorage.setItem(SESSION_UUID_KEY, uuid);
-      sessionStorage.setItem(SESSION_AUTH_KEY, JSON.stringify(authData));
-    }
-
-    // Function to initialize the collection
-    async function initializeCollection(seed) {
-      // Ensure collection is not re-initialized unnecessarily
-      if (appState.collection && appState.collection.credentials.orgDid === NILDB.orgCredentials.orgDid) {
-        return;
-      }
-      try {
-        // Store the instance in appState
-        appState.collection = new SecretVaultWrapper(NILDB.nodes, NILDB.orgCredentials, SCHEMA, seed);
-        await appState.collection.init();
-      } catch (error) {
-        console.error("Failed to initialize collection:", error);
-        showWarningModal(`Error initializing connection: ${error.message}`);
-        sessionStorage.removeItem(SESSION_UUID_KEY);
-        sessionStorage.removeItem(SESSION_AUTH_KEY);
-        appState.collection = null;
-        location.reload();
-      }
-    }
-
-    // Function to display the logged-in user (handles UUID or Address)
-    function displayLoggedInUser(identifier) {
-      if (userDisplaySpan && identifier) {
-        let displayIdentifier = identifier;
-        // Check if it looks like an Ethereum address
-        if (identifier.startsWith('0x') && identifier.length === 42) {
-          // Truncate address for display
-          displayIdentifier = `${identifier.substring(0, 6)}...${identifier.substring(identifier.length - 4)}`;
-          userDisplaySpan.title = `Logged in as: ${identifier}`; // Full address in tooltip
-        } else {
-          userDisplaySpan.title = `Your unique identifier`; // Keep original title for UUID
-        }
-
-        userDisplaySpan.textContent = displayIdentifier;
-        userDisplaySpan.classList.remove('d-none');
-
-        // Add a small copy button next to the identifier
-        const existingCopyBtn = document.getElementById('header-copy-uuid-btn');
-        if (!existingCopyBtn) { // Only add if it doesn't exist
-          const copyBtn = document.createElement('button');
-          copyBtn.id = 'header-copy-uuid-btn';
-          copyBtn.className = 'btn btn-sm btn-outline-secondary ms-1';
-          copyBtn.title = 'Copy full identifier to clipboard';
-          copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
-
-          // Add copy functionality (copies the full identifier)
-          copyBtn.addEventListener('click', function() {
-            navigator.clipboard.writeText(identifier) // Copy original full identifier
-            .then(function() {
+        // Add copy functionality (copies the full identifier)
+        copyBtn.addEventListener('click', function () {
+          navigator.clipboard.writeText(identifier) // Copy original full identifier
+            .then(function () {
               copyBtn.innerHTML = '<i class="fas fa-check"></i>';
               copyBtn.classList.add('btn-success');
               copyBtn.classList.remove('btn-outline-secondary');
@@ -2293,200 +2293,195 @@ function ensureHistogramElements() {
                 copyBtn.disabled = false;
               }, 1200);
             })
-            .catch(function(err) {
+            .catch(function (err) {
               console.error('Could not copy text: ', err);
               showWarningModal('Failed to copy to clipboard');
             });
-          });
+        });
 
-          // Insert after the identifier span
-          if (userDisplaySpan.parentNode) {
-            userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
-          }
-        }
-
-        // Update the sign-up/login button text
-        if (signUpLoginButton) {
-          signUpLoginButton.textContent = 'Logout';
-          signUpLoginButton.removeAttribute('data-bs-toggle');
-          signUpLoginButton.removeAttribute('data-bs-target');
-
-          // Remove existing click handlers and add logout
-          const newButton = signUpLoginButton.cloneNode(true);
-          signUpLoginButton.parentNode.replaceChild(newButton, signUpLoginButton);
-
-          // Add logout functionality
-          newButton.addEventListener('click', function logoutHandler() {
-            // Remove the copy button when logging out
-            const copyBtn = document.getElementById('header-copy-uuid-btn');
-            if (copyBtn) copyBtn.remove();
-
-            sessionStorage.removeItem(SESSION_UUID_KEY);
-            sessionStorage.removeItem(SESSION_AUTH_KEY);
-            appState.collection = null;
-            location.reload();
-          });
+        // Insert after the identifier span
+        if (userDisplaySpan.parentNode) {
+          userDisplaySpan.parentNode.insertBefore(copyBtn, userDisplaySpan.nextSibling);
         }
       }
+
+      // Update the sign-up/login button text
+      if (signUpLoginButton) {
+        signUpLoginButton.textContent = 'Logout';
+        signUpLoginButton.removeAttribute('data-bs-toggle');
+        signUpLoginButton.removeAttribute('data-bs-target');
+
+        // Remove existing click handlers and add logout
+        const newButton = signUpLoginButton.cloneNode(true);
+        signUpLoginButton.parentNode.replaceChild(newButton, signUpLoginButton);
+
+        // Add logout functionality
+        newButton.addEventListener('click', function logoutHandler() {
+          // Remove the copy button when logging out
+          const copyBtn = document.getElementById('header-copy-uuid-btn');
+          if (copyBtn) copyBtn.remove();
+
+          sessionStorage.removeItem(SESSION_UUID_KEY);
+          sessionStorage.removeItem(SESSION_AUTH_KEY);
+          appState.collection = null;
+          location.reload();
+        });
+      }
     }
+  }
 
-    // Handle registration
-    if (registerButton) {
-      registerButton.addEventListener('click', async function() {
-        const uuid = uuidSpan.textContent;
-        const passwordInput = document.getElementById('register-password');
-        const password = passwordInput.value;
+  // Handle registration
+  if (registerButton) {
+    registerButton.addEventListener('click', async function () {
+      const uuid = uuidSpan.textContent;
+      const passwordInput = document.getElementById('register-password');
+      const password = passwordInput.value;
 
-        if (!uuid || uuid === 'UUID generation failed' || !password) {
-          showWarningModal('Please generate a valid UUID and provide a password');
-          return;
+      if (!uuid || uuid === 'UUID generation failed' || !password) {
+        showWarningModal('Please generate a valid UUID and provide a password');
+        return;
+      }
+
+      // Basic password validation (example)
+      if (password.length < 8) {
+        showWarningModal('Password must be at least 8 characters long.');
+        return;
+      }
+
+      // Save the auth data
+      saveAuthData(uuid, password);
+
+      // Initialize the collection
+      await initializeCollection(password);
+
+      // Dynamically get the modal instance and close it
+      const authModalInstance = bootstrap.Modal.getInstance(authModal);
+      if (authModalInstance) {
+        authModalInstance.hide();
+      }
+
+      // Display the logged-in user
+      displayLoggedInUser(uuid);
+      // Run initial query after registration
+      runAndLogInitialQuery();
+    });
+  }
+
+  // Handle login
+  if (loginButton) {
+    loginButton.addEventListener('click', async function () {
+      const uuidInput = document.getElementById('login-username');
+      const passwordInput = document.getElementById('login-password');
+      const uuid = uuidInput.value;
+      const password = passwordInput.value;
+
+      if (!uuid || !password) {
+        showWarningModal('Please provide both Unique Identifier and password');
+        return;
+      }
+
+      // Save the auth data
+      saveAuthData(uuid, password);
+
+      // Initialize the collection
+      await initializeCollection(password);
+
+      // Close the modal if initialization was successful (or handle error)
+      if (appState.collection) {
+        if (authModalElement) {
+          authModalElement.hide();
         }
-
-        // Basic password validation (example)
-        if (password.length < 8) {
-          showWarningModal('Password must be at least 8 characters long.');
-          return;
-        }
-
-        // Save the auth data
-        saveAuthData(uuid, password);
-
-        // Initialize the collection
-        await initializeCollection(password);
-
-        // Dynamically get the modal instance and close it
-        const authModalInstance = bootstrap.Modal.getInstance(authModal);
-        if (authModalInstance) {
-          authModalInstance.hide();
-        }
-
         // Display the logged-in user
         displayLoggedInUser(uuid);
-        // Run initial query after registration
+        // Run initial query after login
         runAndLogInitialQuery();
-      });
+      } else {
+        passwordInput.value = ''; // Clear password field on failed login attempt
+      }
+    });
+  }
+
+  // Define the Wallet Connect click handler logic
+  async function handleWalletConnect() {
+    if (typeof window.ethereum === 'undefined') {
+      showWarningModal('No Ethereum wallet detected! Please install a browser extension like MetaMask.');
+      return;
     }
 
-    // Handle login
-    if (loginButton) {
-      loginButton.addEventListener('click', async function() {
-        const uuidInput = document.getElementById('login-username');
-        const passwordInput = document.getElementById('login-password');
-        const uuid = uuidInput.value;
-        const password = passwordInput.value;
-
-        if (!uuid || !password) {
-          showWarningModal('Please provide both Unique Identifier and password');
-          return;
-        }
-
-        // TODO: Add actual authentication logic here if needed
-        // For now, we just save the credentials and initialize
-
-        // Save the auth data
-        saveAuthData(uuid, password);
-
-        // Initialize the collection
-        await initializeCollection(password);
-
-        // Close the modal if initialization was successful (or handle error)
-        if (appState.collection) {
-          if (authModalElement) {
-            authModalElement.hide();
-          }
-          // Display the logged-in user
-          displayLoggedInUser(uuid);
-          // Run initial query after login
-          runAndLogInitialQuery();
-        } else {
-          // Error handling is done within initializeCollection
-          // Optionally clear fields or provide specific feedback
-          passwordInput.value = ''; // Clear password field on failed login attempt
-        }
-      });
+    // Ensure login form elements are available
+    if (!loginUsernameInput || !loginPasswordInput || !loginTabLink) {
+      console.error('Login form elements not found, cannot pre-fill.');
+      showWarningModal('Internal error: Cannot access login form elements.');
+      return;
     }
 
-    // Define the Wallet Connect click handler logic
-    async function handleWalletConnect() {
-      if (typeof window.ethereum === 'undefined') {
-        showWarningModal('No Ethereum wallet detected! Please install a browser extension like MetaMask.');
+    try {
+      // Request account access
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (!accounts || accounts.length === 0) {
+        showWarningModal('Could not retrieve account from wallet.');
         return;
       }
+      const address = accounts[0]; // User's Ethereum address
 
-      // Ensure login form elements are available
-      if (!loginUsernameInput || !loginPasswordInput || !loginTabLink) {
-        console.error('Login form elements not found, cannot pre-fill.');
-        showWarningModal('Internal error: Cannot access login form elements.');
-        return;
+      // Pre-fill the login form with the address
+      loginUsernameInput.value = address;
+
+      // Switch to the Login tab
+      const loginTab = new bootstrap.Tab(loginTabLink);
+      loginTab.show();
+
+      // Focus the password field for the user
+      loginPasswordInput.focus();
+
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      let userMessage = 'Failed to connect wallet.';
+      if (error.code === 4001) { // EIP-1193 userRejectedRequest error
+        userMessage = 'Wallet connection request rejected.';
       }
+      showWarningModal(userMessage);
+    }
+  }
 
-      try {
-        // Request account access
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        if (!accounts || accounts.length === 0) {
-          showWarningModal('Could not retrieve account from wallet.');
-          return;
-        }
-        const address = accounts[0]; // User's Ethereum address
+  // Handle Connect Wallet button (attach listener to both buttons)
+  if (connectWalletButtons.length > 0) {
+    connectWalletButtons.forEach(button => {
+      button.addEventListener('click', handleWalletConnect);
+    });
+  }
 
-        // Pre-fill the login form with the address
-        loginUsernameInput.value = address;
+  // Set UUID when register tab is shown
+  if (registerTabLink && uuidSpan) {
+    registerTabLink.addEventListener('shown.bs.tab', setUuid);
+  }
 
-        // Switch to the Login tab
-        const loginTab = new bootstrap.Tab(loginTabLink);
-        loginTab.show();
-
-        // Focus the password field for the user
-        loginPasswordInput.focus();
-
-      } catch (error) {
-        console.error('Error connecting wallet:', error);
-        let userMessage = 'Failed to connect wallet.';
-        if (error.code === 4001) { // EIP-1193 userRejectedRequest error
-          userMessage = 'Wallet connection request rejected.';
-        }
-        showWarningModal(userMessage);
+  // Set UUID when auth modal is shown (if not already set)
+  if (authModal && uuidSpan) {
+    authModal.addEventListener('show.bs.modal', () => {
+      if (!uuidSpan.textContent || uuidSpan.textContent === 'UUID generation failed') {
+        setUuid();
       }
-    }
+    });
+  }
 
-    // Handle Connect Wallet button (attach listener to both buttons)
-    if (connectWalletButtons.length > 0) {
-      connectWalletButtons.forEach(button => {
-        button.addEventListener('click', handleWalletConnect);
-      });
-    }
+  // Initial UUID generation on load if needed
+  if (uuidSpan && (!uuidSpan.textContent || uuidSpan.textContent === 'UUID generation failed')) {
+    setUuid();
+  }
 
-    // Set UUID when register tab is shown
-    if (registerTabLink && uuidSpan) {
-      registerTabLink.addEventListener('shown.bs.tab', setUuid);
-    }
+  // Copy to clipboard functionality for registration modal
+  const copyBtn = document.getElementById('copy-uuid-btn');
+  if (copyBtn && uuidSpan) {
+    copyBtn.addEventListener('click', function () {
+      // Get the current UUID text
+      const uuidText = uuidSpan.textContent;
 
-    // Set UUID when auth modal is shown (if not already set)
-    if (authModal && uuidSpan) {
-      authModal.addEventListener('show.bs.modal', () => {
-        if (!uuidSpan.textContent || uuidSpan.textContent === 'UUID generation failed') {
-          setUuid();
-        }
-      });
-    }
-
-    // Initial UUID generation on load if needed
-    if (uuidSpan && (!uuidSpan.textContent || uuidSpan.textContent === 'UUID generation failed')) {
-      setUuid();
-    }
-
-    // Copy to clipboard functionality for registration modal
-    const copyBtn = document.getElementById('copy-uuid-btn');
-    if (copyBtn && uuidSpan) {
-      copyBtn.addEventListener('click', function() {
-        // Get the current UUID text
-        const uuidText = uuidSpan.textContent;
-
-        // Check if we have a valid UUID to copy
-        if (uuidText && uuidText !== 'UUID generation failed') {
-          // Use the clipboard API to copy the text
-          navigator.clipboard.writeText(uuidText)
-          .then(function() {
+      // Check if we have a valid UUID to copy
+      if (uuidText && uuidText !== 'UUID generation failed') {
+        // Use the clipboard API to copy the text
+        navigator.clipboard.writeText(uuidText)
+          .then(function () {
             // Success feedback
             copyBtn.innerHTML = '<i class="fas fa-check"></i>';
             copyBtn.classList.add('btn-success');
@@ -2501,220 +2496,216 @@ function ensureHistogramElements() {
               copyBtn.disabled = false;
             }, 1200);
           })
-          .catch(function(err) {
+          .catch(function (err) {
             console.error('Could not copy text: ', err);
             showWarningModal('Failed to copy to clipboard');
           });
-        } else {
-          showWarningModal('No valid UUID to copy');
-        }
-      });
-    }
-
-    // Check if user is already logged in on page load
-    const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
-    const savedAuth = sessionStorage.getItem(SESSION_AUTH_KEY);
-    let savedPassword = null;
-    if (savedAuth) {
-      try {
-        const parsedAuth = JSON.parse(savedAuth);
-        savedPassword = parsedAuth.password;
-      } catch {
-        savedPassword = null;
-      }
-    }
-    if (savedUuid && savedPassword) {
-      // Wrap in an async IIFE to use await for initialization
-      (async () => {
-        displayLoggedInUser(savedUuid);
-        await initializeCollection(savedPassword); // Ensure collection is initialized
-        // Run initial query on page load if logged in
-        runAndLogInitialQuery();
-      })();
-    }
-  }
-
-  // Function to fetch available LLM models
-  async function fetchAndPopulateModels() {
-    // No longer need the old select element
-    // const modelSelect = document.getElementById('llm-model-select');
-    // if (!modelSelect) return;
-
-    const modelDropdownMenu = document.getElementById('model-select-dropdown-menu');
-    const modelDisplaySpan = document.getElementById('llm-model-display');
-    const askLlmButton = document.getElementById('ask-secret-llm-btn');
-
-    // Initial state before fetch
-    if (modelDisplaySpan) modelDisplaySpan.textContent = 'Loading...';
-    if (askLlmButton) askLlmButton.dataset.selectedModel = ''; // Clear selected model data
-
-    const myHeaders = new Headers();
-    myHeaders.append("Accept", "application/json");
-    myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`);
-
-    const requestOptions = {
-      method: "GET",
-      headers: myHeaders,
-      redirect: "follow"
-    };
-
-    try {
-      const response = await fetch(`${NIL_API_BASE_URL}/models`, requestOptions);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
-      }
-      const result = await response.json();
-
-      // Check if the result *itself* is an array
-      if (Array.isArray(result)) {
-        populateModelDropdown(result); // Pass the result array directly
       } else {
-        throw new Error("Unexpected response structure for models");
-      }
-
-    } catch (error) {
-      console.error("Error fetching models:", error);
-      // Update dropdown menu and display span to show error
-      if(modelDropdownMenu) modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">Error loading models</a></li>';
-      if(modelDisplaySpan) modelDisplaySpan.textContent = 'Error';
-      if(askLlmButton) askLlmButton.dataset.selectedModel = ''; // Clear selection on error
-    }
-  }
-
-  // Function to populate the new model dropdown menu (UL element)
-  function populateModelDropdown(models) {
-    const modelDropdownMenu = document.getElementById('model-select-dropdown-menu');
-    const modelDisplaySpan = document.getElementById('llm-model-display');
-    const askLlmButton = document.getElementById('ask-secret-llm-btn');
-
-    if (!modelDropdownMenu || !modelDisplaySpan || !askLlmButton) {
-      console.error("Required elements for model dropdown not found.");
-      return;
-    }
-
-    modelDropdownMenu.innerHTML = ''; // Clear existing items (like "Loading...")
-
-    if (!models || models.length === 0) {
-      modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">No models available</a></li>';
-      modelDisplaySpan.textContent = 'N/A';
-      askLlmButton.dataset.selectedModel = '';
-      return;
-    }
-
-    let defaultModelSet = false;
-    models.forEach(model => {
-      if (model && typeof model.id === 'string') {
-        const listItem = document.createElement('li');
-        const buttonItem = document.createElement('button');
-        buttonItem.className = 'dropdown-item';
-        buttonItem.type = 'button';
-        buttonItem.textContent = model.id;
-        buttonItem.dataset.modelId = model.id; // Store model ID on the button
-
-        // Add click listener to update selection
-        buttonItem.addEventListener('click', (e) => {
-          const selectedId = e.target.dataset.modelId;
-          modelDisplaySpan.textContent = selectedId; // Update display
-          askLlmButton.dataset.selectedModel = selectedId; // Store selection on main button
-        });
-
-        listItem.appendChild(buttonItem);
-        modelDropdownMenu.appendChild(listItem);
-
-        // Set initial display and selection based on default
-        if (!defaultModelSet && model.id === DEFAULT_LLM_MODEL) {
-          modelDisplaySpan.textContent = model.id;
-          askLlmButton.dataset.selectedModel = model.id;
-          defaultModelSet = true;
-        }
+        showWarningModal('No valid UUID to copy');
       }
     });
-
-    // If default wasn't found, select and display the first one
-    if (!defaultModelSet && models.length > 0 && models[0] && models[0].id) {
-      const firstModelId = models[0].id;
-      modelDisplaySpan.textContent = firstModelId;
-      askLlmButton.dataset.selectedModel = firstModelId;
-      // Add active class to the first item visually if needed (optional)
-      // modelDropdownMenu.querySelector('.dropdown-item')?.classList.add('active');
-    }
   }
 
-  // Helper function to wrap selected text in a textarea with Markdown syntax
-  function wrapTextWithMarkdown(textareaId, format) {
-    const textarea = document.getElementById(textareaId);
-    if (!textarea) {
-      console.error(`[Debug Markdown] Textarea with ID '${textareaId}' not found!`);
-      return;
+  // Check if user is already logged in on page load
+  const savedUuid = sessionStorage.getItem(SESSION_UUID_KEY);
+  const savedAuth = sessionStorage.getItem(SESSION_AUTH_KEY);
+  let savedPassword = null;
+  if (savedAuth) {
+    try {
+      const parsedAuth = JSON.parse(savedAuth);
+      savedPassword = parsedAuth.password;
+    } catch {
+      savedPassword = null;
+    }
+  }
+  if (savedUuid && savedPassword) {
+    // Wrap in an async IIFE to use await for initialization
+    (async () => {
+      displayLoggedInUser(savedUuid);
+      await initializeCollection(savedPassword); // Ensure collection is initialized
+      // Run initial query on page load if logged in
+      runAndLogInitialQuery();
+    })();
+  }
+}
+
+// Function to fetch available LLM models
+async function fetchAndPopulateModels() {
+  const modelDropdownMenu = document.getElementById('model-select-dropdown-menu');
+  const modelDisplaySpan = document.getElementById('llm-model-display');
+  const askLlmButton = document.getElementById('ask-secret-llm-btn');
+
+  // Initial state before fetch
+  if (modelDisplaySpan) modelDisplaySpan.textContent = 'Loading...';
+  if (askLlmButton) askLlmButton.dataset.selectedModel = ''; // Clear selected model data
+
+  const myHeaders = new Headers();
+  myHeaders.append("Accept", "application/json");
+  myHeaders.append("Authorization", `Bearer ${NIL_API_TOKEN}`);
+
+  const requestOptions = {
+    method: "GET",
+    headers: myHeaders,
+    redirect: "follow"
+  };
+
+  try {
+    const response = await fetch(`${NIL_API_BASE_URL}/models`, requestOptions);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+    }
+    const result = await response.json();
+
+    // Check if the result *itself* is an array
+    if (Array.isArray(result)) {
+      populateModelDropdown(result); // Pass the result array directly
+    } else {
+      throw new Error("Unexpected response structure for models");
     }
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-    let markdownText = selectedText;
+  } catch (error) {
+    console.error("Error fetching models:", error);
+    // Update dropdown menu and display span to show error
+    if (modelDropdownMenu) modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">Error loading models</a></li>';
+    if (modelDisplaySpan) modelDisplaySpan.textContent = 'Error';
+    if (askLlmButton) askLlmButton.dataset.selectedModel = ''; // Clear selection on error
+  }
+}
 
-    switch (format) {
-      case 'bold':
-        markdownText = `**${selectedText}**`;
-        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
-        // Adjust cursor position
-        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 2; }
-        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
-        break;
-      case 'italic':
-        markdownText = `*${selectedText}*`;
-        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
-        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 1; }
-        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
-        break;
-      case 'strikethrough':
-        markdownText = `~~${selectedText}~~`;
-        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
-        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 2; }
-        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
-        break;
-      case 'underline': // Added case
-        markdownText = `<u>${selectedText}</u>`;
-        textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
-        if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 3; }
-        else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
-        break;
-      case 'h1':
-      case 'h2':
-      case 'h3':
-      case 'h4':
-        const level = parseInt(format.substring(1), 10);
-        const prefix = '#'.repeat(level) + ' ';
+// Function to populate the new model dropdown menu (UL element)
+function populateModelDropdown(models) {
+  const modelDropdownMenu = document.getElementById('model-select-dropdown-menu');
+  const modelDisplaySpan = document.getElementById('llm-model-display');
+  const askLlmButton = document.getElementById('ask-secret-llm-btn');
+
+  if (!modelDropdownMenu || !modelDisplaySpan || !askLlmButton) {
+    console.error("Required elements for model dropdown not found.");
+    return;
+  }
+
+  modelDropdownMenu.innerHTML = ''; // Clear existing items (like "Loading...")
+
+  if (!models || models.length === 0) {
+    modelDropdownMenu.innerHTML = '<li><a class="dropdown-item disabled" href="#">No models available</a></li>';
+    modelDisplaySpan.textContent = 'N/A';
+    askLlmButton.dataset.selectedModel = '';
+    return;
+  }
+
+  let defaultModelSet = false;
+  models.forEach(model => {
+    if (model && typeof model.id === 'string') {
+      const listItem = document.createElement('li');
+      const buttonItem = document.createElement('button');
+      buttonItem.className = 'dropdown-item';
+      buttonItem.type = 'button';
+      buttonItem.textContent = model.id;
+      buttonItem.dataset.modelId = model.id; // Store model ID on the button
+
+      // Add click listener to update selection
+      buttonItem.addEventListener('click', (e) => {
+        const selectedId = e.target.dataset.modelId;
+        modelDisplaySpan.textContent = selectedId; // Update display
+        askLlmButton.dataset.selectedModel = selectedId; // Store selection on main button
+      });
+
+      listItem.appendChild(buttonItem);
+      modelDropdownMenu.appendChild(listItem);
+
+      // Set initial display and selection based on default
+      if (!defaultModelSet && model.id === DEFAULT_LLM_MODEL) {
+        modelDisplaySpan.textContent = model.id;
+        askLlmButton.dataset.selectedModel = model.id;
+        defaultModelSet = true;
+      }
+    }
+  });
+
+  // If default wasn't found, select and display the first one
+  if (!defaultModelSet && models.length > 0 && models[0] && models[0].id) {
+    const firstModelId = models[0].id;
+    modelDisplaySpan.textContent = firstModelId;
+    askLlmButton.dataset.selectedModel = firstModelId;
+    // Add active class to the first item visually if needed (optional)
+    // modelDropdownMenu.querySelector('.dropdown-item')?.classList.add('active');
+  }
+}
+
+// Helper function to wrap selected text in a textarea with Markdown syntax
+function wrapTextWithMarkdown(textareaId, format) {
+  const textarea = document.getElementById(textareaId);
+  if (!textarea) {
+    console.error(`[Debug Markdown] Textarea with ID '${textareaId}' not found!`);
+    return;
+  }
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selectedText = textarea.value.substring(start, end);
+  let markdownText = selectedText;
+
+  switch (format) {
+    case 'bold':
+      markdownText = `**${selectedText}**`;
+      textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+      // Adjust cursor position
+      if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 2; }
+      else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
+      break;
+    case 'italic':
+      markdownText = `*${selectedText}*`;
+      textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+      if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 1; }
+      else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
+      break;
+    case 'strikethrough':
+      markdownText = `~~${selectedText}~~`;
+      textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+      if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 2; }
+      else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
+      break;
+    case 'underline': // Added case
+      markdownText = `<u>${selectedText}</u>`;
+      textarea.value = textarea.value.substring(0, start) + markdownText + textarea.value.substring(end);
+      if (selectedText.length === 0) { textarea.selectionStart = textarea.selectionEnd = start + 3; }
+      else { textarea.selectionStart = textarea.selectionEnd = start + markdownText.length; }
+      break;
+    case 'h1':
+    case 'h2':
+    case 'h3':
+    case 'h4':
+      const level = parseInt(format.substring(1), 10);
+      const prefix = '#'.repeat(level) + ' ';
+      const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
+      // Insert prefix at the beginning of the line
+      textarea.value = textarea.value.substring(0, lineStart) + prefix + textarea.value.substring(lineStart);
+      // Adjust cursor position to be after the inserted prefix
+      textarea.selectionStart = textarea.selectionEnd = lineStart + prefix.length;
+      break;
+    case 'unordered-list':
+      {
+        const listPrefix = '- ';
         const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
-        // Insert prefix at the beginning of the line
-        textarea.value = textarea.value.substring(0, lineStart) + prefix + textarea.value.substring(lineStart);
-        // Adjust cursor position to be after the inserted prefix
-        textarea.selectionStart = textarea.selectionEnd = lineStart + prefix.length;
-        break;
-      case 'unordered-list':
-        {
-          const listPrefix = '- ';
-          const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
-          textarea.value = textarea.value.substring(0, lineStart) + listPrefix + textarea.value.substring(lineStart);
-          textarea.selectionStart = textarea.selectionEnd = lineStart + listPrefix.length;
-        }
-        break;
-      case 'ordered-list':
-         {
-          const listPrefix = '1. ';
-          const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
-          textarea.value = textarea.value.substring(0, lineStart) + listPrefix + textarea.value.substring(lineStart);
-          textarea.selectionStart = textarea.selectionEnd = lineStart + listPrefix.length;
-         }
-        break;
-      // Add cases for other formats like lists, links, etc. if needed
-    }
-
-    textarea.focus(); // Keep focus on the textarea
+        textarea.value = textarea.value.substring(0, lineStart) + listPrefix + textarea.value.substring(lineStart);
+        textarea.selectionStart = textarea.selectionEnd = lineStart + listPrefix.length;
+      }
+      break;
+    case 'ordered-list':
+      {
+        const listPrefix = '1. ';
+        const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1;
+        textarea.value = textarea.value.substring(0, lineStart) + listPrefix + textarea.value.substring(lineStart);
+        textarea.selectionStart = textarea.selectionEnd = lineStart + listPrefix.length;
+      }
+      break;
+    // Add cases for other formats like lists, links, etc. if needed
   }
+
+  textarea.focus(); // Keep focus on the textarea
+}
 
 // Single DOMContentLoaded listener to initialize both parts
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   initializeReflectionsApp();
   initializeAuth();
   fetchAndPopulateModels(); // Fetch models when DOM is ready
