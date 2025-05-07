@@ -511,5 +511,16 @@
     </div>
   </div>
 
+  <!-- Load the feedback widget -->
+  <script
+  src="https://422c26e9.feedback-widget-u8y.pages.dev/widget.js"
+  data-server-url="https://feedback-widget-orrr.onrender.com"
+  ></script>
+  <script>
+  // Initialize the widget
+  window.embed_feedback_widget('init', '4mt6-wumd-3ppq').then((config) => {
+    console.log('Widget initialized with config:', config);
+  });
+  </script>
 </body>
 </html>
