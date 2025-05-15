@@ -15,8 +15,8 @@ const appState = {
 /* Organization configuration for nilDB. */
 const NILDB = {
   orgCredentials: {
-    secretKey: '71c918306c9ca544e824363bdfcca57ff56a1e086020b36dfc70705637c348da',
-    orgDid: 'did:nil:testnet:nillion1z4c6ntjf7vcpytfesew6dplek3v3rnkaxntmt6',
+    secretKey: process.env.NILDB_ORG_ID,
+    orgDid: process.env.NILDB_SECRET_KEY,
   },
   nodes: [
     {
@@ -35,13 +35,13 @@ const NILDB = {
 };
 
 // The `memory`, `mood`, `file`, and `file_name` entries are stored with shares
-const SCHEMA = '0872b4f4-8e6c-4fe5-a3f3-4dfcaed9ddd3';
+const SCHEMA = process.env.NILDB_SCHEMA_ID;
 const TAG_AGGREGATION = '8c7c4993-d486-40f3-916e-23b930764ab3';
 const MOOD_AGGREGATION = 'd2a6f4dd-3b2d-4333-864a-3af5b990a51c';
 
 // --- Constants ---
-const NIL_API_BASE_URL = "https://nilai-a779.nillion.network/v1";
-const NIL_API_TOKEN = "Nillion2025";
+const NIL_API_BASE_URL = process.env.NIL_API_BASE_URL;
+const NIL_API_TOKEN = process.env.NIL_API_TOKEN;
 const DEFAULT_LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
 const CHUNK_SIZE = 2 * 1024; // 2 KB
 
