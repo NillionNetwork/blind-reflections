@@ -36,8 +36,8 @@ const NILDB = {
 
 // The `memory`, `mood`, `file`, and `file_name` entries are stored with shares
 const SCHEMA = process.env.NILDB_SCHEMA_ID;
-const TAG_AGGREGATION = '8c7c4993-d486-40f3-916e-23b930764ab3';
-const MOOD_AGGREGATION = 'd2a6f4dd-3b2d-4333-864a-3af5b990a51c';
+const TAG_AGGREGATION = process.env.TAG_AGGREGATION;
+const MOOD_AGGREGATION = process.env.MOOD_AGGREGATION;
 
 // --- Constants ---
 const NIL_API_BASE_URL = process.env.NIL_API_BASE_URL;
